@@ -82,8 +82,8 @@ Shader "Terrain/TerrainUnlit"
                 
                 half4 terrainColor = control.r * splat0 + control.g * splat1 + control.b * splat2 + control.a * splat3;
                 
-                half3 lighting = ShadowlessCelLighting(IN.normalWS, GetMainLight().direction, 
-                    UNITY_MATRIX_M._m03_m13_m23, IN.worldPos);
+                half3 lighting = ShadowlessCelLighting(IN.normalWS, UNITY_MATRIX_M._m03_m13_m23, 
+                    IN.worldPos, GetMainLight());
                 terrainColor.rgb *= lighting;
                 
                 return terrainColor;

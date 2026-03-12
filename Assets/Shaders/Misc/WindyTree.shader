@@ -41,6 +41,7 @@ Shader "Custom/WindyTree"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
             #include "Assets/Shaders/Lighting/CustomLighting.hlsl"
+            #include "Assets/Shaders/Misc/FoliageVertexManipulation.hlsl"
 
             struct Attributes
             {
@@ -78,28 +79,14 @@ Shader "Custom/WindyTree"
             TEXTURE2D(_MainTexture);       SAMPLER(sampler_MainTexture);
             TEXTURE2D(_Emission);          SAMPLER(sampler_Emission);
             
-            float SimpleWind(float x, float time, float speed, float frequency)
-            {
-                // İki farklı frekansta sin dalgası topla → daha organik görünür
-                float a = sin((x / frequency) + time * speed);
-                float b = sin((x / frequency * 2.3) + time * speed * 1.7) * 0.5;
-                return (a + b) / 1.5; // -1 ile 1 arası normalize et
-            }
-
             Varyings vert(Attributes IN)
             {
                 Varyings OUT;
                 
-                // Küçük rüzgar
-                float smallNoise = SimpleWind(IN.positionOS.x, _Time.y, _Small_WindSpeed, _Small_Frequency);
-                float smallOffset = smallNoise * _Small_WindAmount * (1.0 - IN.vertexColor.r);
-
-                // Büyük rüzgar
-                float bigNoise = SimpleWind(0.0, _Time.y, _Big_WindSpeed, _Big_Frequency);
-                float bigOffset = bigNoise * _Big_WindAmount * (1.0 - IN.vertexColor.b);
-
-                // Sadece X ekseninde hareket
-                IN.positionOS.x += smallOffset + bigOffset;
+                float offset = VertexColorWindOffset(IN.positionOS, IN.vertexColor, half3(_Small_WindSpeed, _Small_WindAmount, _Small_Frequency), 
+                    half3(_Big_WindSpeed, _Big_WindAmount, _Big_Frequency));
+                
+                IN.positionOS.x += offset;
 
                 OUT.positionHCS = TransformObjectToHClip(IN.positionOS.xyz);
                 OUT.uv = IN.uv;
@@ -123,7 +110,8 @@ Shader "Custom/WindyTree"
                 float4 finalColor = mainTex * _ColorTint + emission * _EmissionColor;
                 finalColor.a = 1.0;
                 
-                half3 diffuse = ShadowlessCelLighting(IN.normalWS, GetMainLight().direction, UNITY_MATRIX_M._m03_m13_m23, IN.worldPos);
+                half3 diffuse = ShadowlessCelLighting(IN.normalWS, UNITY_MATRIX_M._m03_m13_m23, 
+                    IN.worldPos, GetMainLight());
                 finalColor.rgb *= diffuse;
                 return finalColor;
             }

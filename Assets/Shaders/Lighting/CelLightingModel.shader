@@ -55,7 +55,7 @@ Shader "Custom/CelLightingModel"
                 float3 objectWorldPos = UNITY_MATRIX_M._m03_m13_m23;
                 float3 vertPos = TransformObjectToWorld(IN.positionOS.xyz);
                 
-                OUT.diffuse = ShadowlessCelLighting(normal, lightDir, objectWorldPos, vertPos);
+                OUT.diffuse = ShadowlessCelLighting(normal, objectWorldPos, vertPos, GetMainLight());
                 
                 return OUT;
             }

@@ -19,6 +19,8 @@ Shader "Custom/TerrainGrass"
             #pragma multi_compile_instancing  // GPU Instancing
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
+            #include "Assets/Shaders/Misc/FoliageVertexManipulation.hlsl"
 
             struct Attributes
             {
@@ -30,6 +32,7 @@ Shader "Custom/TerrainGrass"
             {
                 float4 positionHCS : SV_POSITION;
                 float3 worldPos    : TEXCOORD0;
+                float ambientLight : TEXCOORD1;
                 UNITY_VERTEX_INPUT_INSTANCE_ID
             };
 
@@ -48,8 +51,13 @@ Shader "Custom/TerrainGrass"
                 Varyings OUT;
                 UNITY_SETUP_INSTANCE_ID(IN);
                 UNITY_TRANSFER_INSTANCE_ID(IN, OUT);
-                OUT.positionHCS = TransformObjectToHClip(IN.positionOS.xyz);
-                OUT.worldPos = TransformObjectToWorld(IN.positionOS.xyz);
+                float3 posOS = IN.positionOS.xyz;
+                posOS.xz += GrassFoliageWindOffset(posOS, half3(1.5, 0.3, 0.5)); // Apply wind offset to vertex position
+                
+                OUT.ambientLight = saturate(posOS.y + 0.9); // Use vertex height as ambient light factor (you can replace this with a more complex calculation if needed)
+                
+                OUT.positionHCS = TransformObjectToHClip(posOS);
+                OUT.worldPos = TransformObjectToWorld(posOS);
                 return OUT;
             }
 
@@ -61,7 +69,8 @@ Shader "Custom/TerrainGrass"
                 float2 uv = float2(diff.x / TERRAIN_SIZE.x, diff.y / TERRAIN_SIZE.y);
 
                 half4 tColor = SAMPLE_TEXTURE2D(_TerrainColorMap, sampler_TerrainColorMap, uv);
-                
+                tColor.rgb *= GetMainLight().color; // Apply main directional light color
+                //tColor.rgb *= IN.ambientLight; // Apply ambient light factor
                 return tColor;
             }
 
