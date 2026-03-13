@@ -42,21 +42,24 @@ Shader "Custom/WindyTree"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
             #include "Assets/Shaders/Lighting/CustomLighting.hlsl"
             #include "Assets/Shaders/Misc/FoliageVertexManipulation.hlsl"
+            
+            #include "Assets/Shaders/Style/PixelArt/DepthCalculations.hlsl"
 
             struct Attributes
             {
-                float4 positionOS : POSITION;   // Object Space pozisyon
+                float4 positionOS : POSITION;
                 float2 uv         : TEXCOORD0;
-                float4 vertexColor : COLOR;     // Vertex paint maskesi
-                float3 normalOS   : NORMAL;    // Object Space normal
+                float4 vertexColor : COLOR;
+                float3 normalOS   : NORMAL;
             };
 
             struct Varyings
             {
-                float4 positionHCS : SV_POSITION; // Clip Space (GPU'nun beklediği)
+                float4 positionHCS : SV_POSITION;
                 float2 uv          : TEXCOORD0;
-                float3 normalWS    : TEXCOORD1;    // World Space normal
-                float3 worldPos    : TEXCOORD2;    // World Space pozisyon
+                float3 normalWS    : TEXCOORD1; 
+                float3 worldPos    : TEXCOORD2;
+                float zEye         : TEXCOORD3;
             };
 
             CBUFFER_START(UnityPerMaterial)
@@ -93,6 +96,10 @@ Shader "Custom/WindyTree"
                 
                 OUT.normalWS = TransformObjectToWorldNormal(IN.normalOS);
                 OUT.worldPos = TransformObjectToWorld(IN.positionOS.xyz);
+                
+                VertexPositionInputs vertexInputs = GetVertexPositionInputs(IN.positionOS.xyz);
+                OUT.zEye = -vertexInputs.positionVS.z;
+                
                 return OUT;
             }
 
@@ -101,18 +108,21 @@ Shader "Custom/WindyTree"
                 float2 uvMain = IN.uv * _MainTexture_ST.xy + _MainTexture_ST.zw;
                 float4 mainTex = SAMPLE_TEXTURE2D(_MainTexture, sampler_MainTexture, uvMain);
 
-                // Alpha clip — yaprağın kenarı
+                // Apply alpha cutoff
                 clip(mainTex.a - _Cutoff);
 
                 float2 uvEmission = IN.uv * _Emission_ST.xy + _Emission_ST.zw;
                 float4 emission = SAMPLE_TEXTURE2D(_Emission, sampler_Emission, uvEmission);
 
                 float4 finalColor = mainTex * _ColorTint + emission * _EmissionColor;
-                finalColor.a = 1.0;
+                
                 
                 half3 diffuse = ShadowlessCelLighting(IN.normalWS, UNITY_MATRIX_M._m03_m13_m23, 
                     IN.worldPos, GetMainLight());
                 finalColor.rgb *= diffuse;
+                
+                finalColor.a = GetDepthValue(IN.zEye, _ProjectionParams.y, _ProjectionParams.z);
+                
                 return finalColor;
             }
             ENDHLSL

@@ -8,10 +8,12 @@ Shader "Custom/CelLightingModel"
 
     SubShader
     {
-        Tags { "RenderType" = "Opaque" "RenderPipeline" = "UniversalPipeline" }
+        Tags { "RenderType" = "Opaque" "RenderPipeline" = "UniversalPipeline" /*"Queue" = "AlphaTest+50"*/}
 
         Pass
         {
+            //ColorMask RGB // Uncomment if you want to write depth to alpha channel for stylized depth-based effects
+            
             HLSLPROGRAM
 
             #pragma vertex vert
@@ -23,6 +25,8 @@ Shader "Custom/CelLightingModel"
             half _ShadowLight;
             #define SHADOW_LIGHT _ShadowLight
             #include "Assets/Shaders/Lighting/CustomLighting.hlsl"
+            
+            #include "Assets/Shaders/Style/PixelArt/DepthCalculations.hlsl"
 
             struct Attributes
             {
@@ -37,6 +41,7 @@ Shader "Custom/CelLightingModel"
                 float2 uv : TEXCOORD0;
                 float3 normalWS : NORMAL;
                 half3 diffuse : TEXCOORD1;
+                float zEye : TEXCOORD2;
             };
 
             TEXTURE2D(_BaseMap);
@@ -57,12 +62,17 @@ Shader "Custom/CelLightingModel"
                 
                 OUT.diffuse = ShadowlessCelLighting(normal, objectWorldPos, vertPos, GetMainLight());
                 
+                VertexPositionInputs vertexInputs = GetVertexPositionInputs(IN.positionOS.xyz);
+                OUT.zEye = -vertexInputs.positionVS.z;
+                
                 return OUT;
             }
 
             half4 frag(Varyings IN) : SV_Target
             {
                 half4 color = SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, IN.uv) * half4(IN.diffuse, 1.0);
+                
+                color.a = GetDepthValue(IN.zEye, _ProjectionParams.y, _ProjectionParams.z);
                 
                 return color;
             }

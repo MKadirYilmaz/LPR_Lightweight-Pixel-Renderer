@@ -59,6 +59,9 @@ Shader "Custom/PixelPerfectBlit"
             {
                 half4 color = SAMPLE_TEXTURE2D(_SourceTexture, sampler_point_clamp, IN.uv);
                 color.rgb = SmartQuantize(color, 32, 0.25, half3(0.85, 0.9, 0.75));
+                
+                color.rgb = color.a;
+                
                 return color;
             }
 

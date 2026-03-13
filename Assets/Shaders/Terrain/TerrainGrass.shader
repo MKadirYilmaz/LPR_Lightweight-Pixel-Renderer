@@ -21,6 +21,8 @@ Shader "Custom/TerrainGrass"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
             #include "Assets/Shaders/Misc/FoliageVertexManipulation.hlsl"
+            
+            #include "Assets/Shaders/Style/PixelArt/DepthCalculations.hlsl"
 
             struct Attributes
             {
@@ -33,6 +35,7 @@ Shader "Custom/TerrainGrass"
                 float4 positionHCS : SV_POSITION;
                 float3 worldPos    : TEXCOORD0;
                 float ambientLight : TEXCOORD1;
+                float zEye         : TEXCOORD2;
                 UNITY_VERTEX_INPUT_INSTANCE_ID
             };
 
@@ -58,6 +61,10 @@ Shader "Custom/TerrainGrass"
                 
                 OUT.positionHCS = TransformObjectToHClip(posOS);
                 OUT.worldPos = TransformObjectToWorld(posOS);
+                
+                VertexPositionInputs vertexInputs = GetVertexPositionInputs(IN.positionOS.xyz);
+                OUT.zEye = -vertexInputs.positionVS.z;
+                
                 return OUT;
             }
 
@@ -71,6 +78,9 @@ Shader "Custom/TerrainGrass"
                 half4 tColor = SAMPLE_TEXTURE2D(_TerrainColorMap, sampler_TerrainColorMap, uv);
                 tColor.rgb *= GetMainLight().color; // Apply main directional light color
                 //tColor.rgb *= IN.ambientLight; // Apply ambient light factor
+                
+                tColor.a = GetDepthValue(IN.zEye, _ProjectionParams.y, _ProjectionParams.z); // Write depth to alpha channel for proper sorting
+                
                 return tColor;
             }
 

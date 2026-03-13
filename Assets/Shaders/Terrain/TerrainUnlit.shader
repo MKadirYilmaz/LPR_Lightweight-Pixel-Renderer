@@ -23,6 +23,8 @@ Shader "Terrain/TerrainUnlit"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
             #include "Assets/Shaders/Lighting/CustomLighting.hlsl"
+            
+            #include "Assets/Shaders/Style/PixelArt/DepthCalculations.hlsl"
 
             struct Attributes
             {
@@ -37,7 +39,7 @@ Shader "Terrain/TerrainUnlit"
                 float2 uvControl : TEXCOORD0;
                 float4 uvSplat0_1 : TEXCOORD1;
                 float4 uvSplat2_3 : TEXCOORD2;
-                float3 worldPos : TEXCOORD3;
+                float4 worldPos : TEXCOORD3;
                 float3 normalWS : TEXCOORD4;
             };
 
@@ -61,12 +63,15 @@ Shader "Terrain/TerrainUnlit"
                 Varyings OUT;
                 OUT.positionHCS = TransformObjectToHClip(IN.positionOS.xyz);
                 OUT.normalWS = TransformObjectToWorldNormal(IN.normalOS);
-                OUT.worldPos = TransformObjectToWorld(IN.positionOS.xyz);
+                OUT.worldPos.xyz = TransformObjectToWorld(IN.positionOS.xyz);
                 
                 OUT.uvControl = TRANSFORM_TEX(IN.uv, _Control);
                 
                 OUT.uvSplat0_1 = float4(TRANSFORM_TEX(IN.uv, _Splat0), TRANSFORM_TEX(IN.uv, _Splat1));
                 OUT.uvSplat2_3 = float4(TRANSFORM_TEX(IN.uv, _Splat2), TRANSFORM_TEX(IN.uv, _Splat3));
+                
+                VertexPositionInputs vertexInputs = GetVertexPositionInputs(IN.positionOS.xyz);
+                OUT.worldPos.w = -vertexInputs.positionVS.z;
                 
                 return OUT;
             }
@@ -83,8 +88,10 @@ Shader "Terrain/TerrainUnlit"
                 half4 terrainColor = control.r * splat0 + control.g * splat1 + control.b * splat2 + control.a * splat3;
                 
                 half3 lighting = ShadowlessCelLighting(IN.normalWS, UNITY_MATRIX_M._m03_m13_m23, 
-                    IN.worldPos, GetMainLight());
+                    IN.worldPos.xyz, GetMainLight());
                 terrainColor.rgb *= lighting;
+                
+                terrainColor.a = GetDepthValue(IN.worldPos.w, _ProjectionParams.y, _ProjectionParams.z);
                 
                 return terrainColor;
             }
