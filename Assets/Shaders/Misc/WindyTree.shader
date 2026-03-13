@@ -37,6 +37,7 @@ Shader "Custom/WindyTree"
             #pragma vertex vert
             #pragma fragment frag
             #pragma multi_compile_instancing
+            #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
@@ -115,16 +116,92 @@ Shader "Custom/WindyTree"
                 float4 emission = SAMPLE_TEXTURE2D(_Emission, sampler_Emission, uvEmission);
 
                 float4 finalColor = mainTex * _ColorTint + emission * _EmissionColor;
+                float4 shadowCoord = TransformWorldToShadowCoord(IN.worldPos);
                 
-                
-                half3 diffuse = ShadowlessCelLighting(IN.normalWS, UNITY_MATRIX_M._m03_m13_m23, 
-                    IN.worldPos, GetMainLight());
+                half3 diffuse = CelLighting(IN.normalWS, UNITY_MATRIX_M._m03_m13_m23, 
+                    IN.worldPos, GetMainLight(shadowCoord));
                 finalColor.rgb *= diffuse;
                 
                 finalColor.a = GetDepthValue(IN.zEye, _ProjectionParams.y, _ProjectionParams.z);
                 
                 return finalColor;
             }
+            ENDHLSL
+        }
+        Pass
+        {
+            Name "ShadowCaster"
+            Tags { "LightMode" = "ShadowCaster" }
+
+            ZWrite On
+            ZTest LEqual
+            ColorMask 0       // No color output, we only care about depth
+            Cull Back
+
+            HLSLPROGRAM
+            #pragma vertex vertShadow
+            #pragma fragment fragShadow
+
+            
+            #pragma multi_compile_shadowcaster
+
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Shadows.hlsl"
+            
+            #include "Assets/Shaders/Misc/FoliageVertexManipulation.hlsl"
+            
+            CBUFFER_START(UnityPerMaterial)
+                float  _Big_WindSpeed;
+                float  _Big_WindAmount;
+                float  _Big_Frequency;
+
+                float  _Small_WindSpeed;
+                float  _Small_WindAmount;
+                float  _Small_Frequency;
+            CBUFFER_END
+
+            struct AttributesShadow {
+                float4 positionOS : POSITION;
+                float3 normalOS   : NORMAL;
+                float4 vertexColor : COLOR;
+            };
+
+            struct VaryingsShadow {
+                float4 positionHCS : SV_POSITION;
+            };
+            
+            float3 _LightDirection;
+
+            VaryingsShadow vertShadow(AttributesShadow IN) {
+                VaryingsShadow OUT;
+
+                float offset = VertexColorWindOffset(IN.positionOS, IN.vertexColor, half3(_Small_WindSpeed, _Small_WindAmount, _Small_Frequency), 
+                    half3(_Big_WindSpeed, _Big_WindAmount, _Big_Frequency));
+                
+                IN.positionOS.x += offset;
+                
+                float3 positionWS = TransformObjectToWorld(IN.positionOS.xyz);
+                float3 normalWS   = TransformObjectToWorldNormal(IN.normalOS);
+
+                // Apply shadow bias to world position to prevent shadow acne and peter-panning
+                OUT.positionHCS = TransformWorldToHClip(
+                    ApplyShadowBias(positionWS, normalWS, _LightDirection)
+                );
+
+                // Depth clamp
+                #if UNITY_REVERSED_Z
+                    OUT.positionHCS.z = min(OUT.positionHCS.z, OUT.positionHCS.w * UNITY_NEAR_CLIP_VALUE);
+                #else
+                    OUT.positionHCS.z = max(OUT.positionHCS.z, OUT.positionHCS.w * UNITY_NEAR_CLIP_VALUE);
+                #endif
+
+                return OUT;
+            }
+
+            half4 fragShadow(VaryingsShadow IN) : SV_Target {
+                return 0;
+            }
+
             ENDHLSL
         }
     }

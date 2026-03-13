@@ -19,6 +19,7 @@ Shader "Terrain/TerrainUnlit"
 
             #pragma vertex vert
             #pragma fragment frag
+            #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
@@ -87,8 +88,9 @@ Shader "Terrain/TerrainUnlit"
                 
                 half4 terrainColor = control.r * splat0 + control.g * splat1 + control.b * splat2 + control.a * splat3;
                 
-                half3 lighting = ShadowlessCelLighting(IN.normalWS, UNITY_MATRIX_M._m03_m13_m23, 
-                    IN.worldPos.xyz, GetMainLight());
+                float4 shadowCoord = TransformWorldToShadowCoord(IN.worldPos);
+                half3 lighting = CelLighting(IN.normalWS, UNITY_MATRIX_M._m03_m13_m23, 
+                    IN.worldPos.xyz, GetMainLight(shadowCoord));
                 terrainColor.rgb *= lighting;
                 
                 terrainColor.a = GetDepthValue(IN.worldPos.w, _ProjectionParams.y, _ProjectionParams.z);

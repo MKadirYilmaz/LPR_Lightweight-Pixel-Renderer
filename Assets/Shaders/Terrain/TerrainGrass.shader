@@ -17,10 +17,12 @@ Shader "Custom/TerrainGrass"
             #pragma vertex vert
             #pragma fragment frag
             #pragma multi_compile_instancing  // GPU Instancing
+            #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
             #include "Assets/Shaders/Misc/FoliageVertexManipulation.hlsl"
+            #include "Assets/Shaders/Lighting/CustomLighting.hlsl"
             
             #include "Assets/Shaders/Style/PixelArt/DepthCalculations.hlsl"
 
@@ -76,7 +78,11 @@ Shader "Custom/TerrainGrass"
                 float2 uv = float2(diff.x / TERRAIN_SIZE.x, diff.y / TERRAIN_SIZE.y);
 
                 half4 tColor = SAMPLE_TEXTURE2D(_TerrainColorMap, sampler_TerrainColorMap, uv);
-                tColor.rgb *= GetMainLight().color; // Apply main directional light color
+                float4 shadowCoord = TransformWorldToShadowCoord(IN.worldPos);
+                
+                half3 diffuse = GrassLighting(GetMainLight(shadowCoord));
+                
+                tColor.rgb *= diffuse; // Apply main directional light color
                 //tColor.rgb *= IN.ambientLight; // Apply ambient light factor
                 
                 tColor.a = GetDepthValue(IN.zEye, _ProjectionParams.y, _ProjectionParams.z); // Write depth to alpha channel for proper sorting

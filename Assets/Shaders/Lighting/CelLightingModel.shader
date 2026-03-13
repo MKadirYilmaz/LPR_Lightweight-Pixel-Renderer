@@ -14,10 +14,13 @@ Shader "Custom/CelLightingModel"
         {
             //ColorMask RGB // Uncomment if you want to write depth to alpha channel for stylized depth-based effects
             
+            Tags { "LightMode" = "UniversalForward" }
+            
             HLSLPROGRAM
 
             #pragma vertex vert
             #pragma fragment frag
+            #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE
             
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
@@ -25,7 +28,6 @@ Shader "Custom/CelLightingModel"
             half _ShadowLight;
             #define SHADOW_LIGHT _ShadowLight
             #include "Assets/Shaders/Lighting/CustomLighting.hlsl"
-            
             #include "Assets/Shaders/Style/PixelArt/DepthCalculations.hlsl"
 
             struct Attributes
@@ -40,7 +42,7 @@ Shader "Custom/CelLightingModel"
                 float4 positionHCS : SV_POSITION;
                 float2 uv : TEXCOORD0;
                 float3 normalWS : NORMAL;
-                half3 diffuse : TEXCOORD1;
+                float3 worldPos : TEXCOORD1;
                 float zEye : TEXCOORD2;
             };
 
@@ -53,14 +55,8 @@ Shader "Custom/CelLightingModel"
                 Varyings OUT;
                 OUT.positionHCS = TransformObjectToHClip(IN.positionOS.xyz);
                 OUT.normalWS = TransformObjectToWorldNormal(IN.normalOS);
+                OUT.worldPos = TransformObjectToWorld(IN.positionOS.xyz);
                 OUT.uv = TRANSFORM_TEX(IN.uv, _BaseMap);
-                
-                float3 lightDir = GetMainLight().direction;
-                float3 normal = OUT.normalWS;
-                float3 objectWorldPos = UNITY_MATRIX_M._m03_m13_m23;
-                float3 vertPos = TransformObjectToWorld(IN.positionOS.xyz);
-                
-                OUT.diffuse = ShadowlessCelLighting(normal, objectWorldPos, vertPos, GetMainLight());
                 
                 VertexPositionInputs vertexInputs = GetVertexPositionInputs(IN.positionOS.xyz);
                 OUT.zEye = -vertexInputs.positionVS.z;
@@ -70,12 +66,78 @@ Shader "Custom/CelLightingModel"
 
             half4 frag(Varyings IN) : SV_Target
             {
-                half4 color = SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, IN.uv) * half4(IN.diffuse, 1.0);
+                half4 color = SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, IN.uv);
+                
+                float3 normal = IN.normalWS;
+                float3 objectWorldPos = UNITY_MATRIX_M._m03_m13_m23;
+                float3 fragPos = IN.worldPos;
+                float4 shadowCoord = TransformWorldToShadowCoord(IN.worldPos);
+                
+                half3 diffuse = CelLighting(normal, objectWorldPos, fragPos, GetMainLight(shadowCoord));
+                color.rgb *= diffuse;
                 
                 color.a = GetDepthValue(IN.zEye, _ProjectionParams.y, _ProjectionParams.z);
                 
                 return color;
             }
+            ENDHLSL
+        }
+        
+        Pass
+        {
+            Name "ShadowCaster"
+            Tags { "LightMode" = "ShadowCaster" }
+
+            ZWrite On
+            ZTest LEqual
+            ColorMask 0       // No color output, we only care about depth
+            Cull Back
+
+            HLSLPROGRAM
+            #pragma vertex vertShadow
+            #pragma fragment fragShadow
+            
+            #pragma multi_compile_shadowcaster
+
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Shadows.hlsl"
+
+            struct AttributesShadow {
+                float4 positionOS : POSITION;
+                float3 normalOS   : NORMAL;
+            };
+
+            struct VaryingsShadow {
+                float4 positionHCS : SV_POSITION;
+            };
+            
+            float3 _LightDirection;
+
+            VaryingsShadow vertShadow(AttributesShadow IN) {
+                VaryingsShadow OUT;
+
+                float3 positionWS = TransformObjectToWorld(IN.positionOS.xyz);
+                float3 normalWS   = TransformObjectToWorldNormal(IN.normalOS);
+
+                // Apply shadow bias to world position to prevent shadow acne and peter-panning
+                OUT.positionHCS = TransformWorldToHClip(
+                    ApplyShadowBias(positionWS, normalWS, _LightDirection)
+                );
+
+                // Depth clamp
+                #if UNITY_REVERSED_Z
+                    OUT.positionHCS.z = min(OUT.positionHCS.z, OUT.positionHCS.w * UNITY_NEAR_CLIP_VALUE);
+                #else
+                    OUT.positionHCS.z = max(OUT.positionHCS.z, OUT.positionHCS.w * UNITY_NEAR_CLIP_VALUE);
+                #endif
+
+                return OUT;
+            }
+
+            half4 fragShadow(VaryingsShadow IN) : SV_Target {
+                return 0;
+            }
+
             ENDHLSL
         }
     }

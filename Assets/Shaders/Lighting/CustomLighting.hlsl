@@ -66,4 +66,9 @@ half3 CelLighting(half3 normal, float3 objectPosWS, float3 VF_PosWS, Light light
     return light.color * diffuse;
 }
 
+half3 GrassLighting(Light light)
+{
+    return light.color * (light.shadowAttenuation + SHADOW_LIGHT);
+}
+
 
