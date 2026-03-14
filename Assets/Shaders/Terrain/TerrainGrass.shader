@@ -8,10 +8,11 @@ Shader "Custom/TerrainGrass"
 
     SubShader
     {
-        Tags { "RenderType" = "Opaque" "RenderPipeline" = "UniversalPipeline" }
+        Tags { "RenderType" = "Opaque" "RenderPipeline" = "UniversalPipeline" "Queue" = "AlphaTest+50"}
 
         Pass
         {
+            ColorMask RGB
             HLSLPROGRAM
 
             #pragma vertex vert
