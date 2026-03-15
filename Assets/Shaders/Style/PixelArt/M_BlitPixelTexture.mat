@@ -38,7 +38,7 @@ Material:
     m_Ints: []
     m_Floats:
     - _DepthOutlineThreshold: 0.01
-    - _NormalOutlineThreshold: 0.0018
+    - _NormalOutlineThreshold: 0.0025
     - _OutlineThreshold: 0.0025
     m_Colors: []
   m_BuildTextureStacks: []

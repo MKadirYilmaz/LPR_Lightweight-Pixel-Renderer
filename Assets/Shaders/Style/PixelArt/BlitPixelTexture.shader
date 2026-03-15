@@ -61,8 +61,10 @@ Shader "Custom/PixelPerfectBlit"
 
             half4 frag(Varyings IN) : SV_Target
             {
-                // For direct texture load, we need to convert UV coordinates to pixel coordinates
-                int2 pixelCoord = int2(IN.uv * _SourceTexture_TexelSize.zw);
+                uint rtWidth, rtHeight;
+                _SourceTexture.GetDimensions(rtWidth, rtHeight);
+                
+                int2 pixelCoord = int2(IN.uv * float2(rtWidth, rtHeight));
                 
                 // Load function requires XY integer coordinates and mip level (0 for base level)
                 uint packedData = _SourceTexture.Load(int3(pixelCoord, 0));
