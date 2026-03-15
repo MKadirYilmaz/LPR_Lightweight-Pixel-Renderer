@@ -13,12 +13,8 @@ Shader "Terrain/TerrainUnlit"
     {
         Tags { "RenderType" = "Opaque" "RenderPipeline" = "UniversalPipeline" "TerrainCompatible" = "True" }
 
-        Pass
-        {
-            HLSLPROGRAM
-
-            #pragma vertex vert
-            #pragma fragment frag
+        HLSLINCLUDE
+        
             #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
@@ -77,6 +73,37 @@ Shader "Terrain/TerrainUnlit"
                 return OUT;
             }
 
+            half4 fragmentCalculation(Varyings IN)
+            {
+                half4 control = SAMPLE_TEXTURE2D(_Control, sampler_Control, IN.uvControl); // R = Splat0, G = Splat1, B = Splat2, A = Splat3
+                
+                half4 splat0 = SAMPLE_TEXTURE2D(_Splat0, sampler_Splat0, IN.uvSplat0_1.xy);
+                half4 splat1 = SAMPLE_TEXTURE2D(_Splat1, sampler_Splat1, IN.uvSplat0_1.zw);
+                half4 splat2 = SAMPLE_TEXTURE2D(_Splat2, sampler_Splat2, IN.uvSplat2_3.xy);
+                half4 splat3 = SAMPLE_TEXTURE2D(_Splat3, sampler_Splat3, IN.uvSplat2_3.zw);
+                
+                half4 terrainColor = control.r * splat0 + control.g * splat1 + control.b * splat2 + control.a * splat3;
+                
+                float4 shadowCoord = TransformWorldToShadowCoord(IN.worldPos);
+                half3 lighting = CelLighting(IN.normalWS, UNITY_MATRIX_M._m03_m13_m23, 
+                    IN.worldPos.xyz, GetMainLight(shadowCoord));
+                terrainColor.rgb *= lighting;
+                terrainColor.a = GetDepthValue(IN.worldPos.w, _ProjectionParams.y, _ProjectionParams.z);
+                return terrainColor;
+            }
+        
+        ENDHLSL
+
+        Pass
+        {
+            Name "UniversalForward"
+            Tags { "LightMode" = "UniversalForward" }
+            
+            HLSLPROGRAM
+
+            #pragma vertex vert
+            #pragma fragment frag
+
             half4 frag(Varyings IN) : SV_Target
             {
                 half4 control = SAMPLE_TEXTURE2D(_Control, sampler_Control, IN.uvControl); // R = Splat0, G = Splat1, B = Splat2, A = Splat3
@@ -93,11 +120,28 @@ Shader "Terrain/TerrainUnlit"
                     IN.worldPos.xyz, GetMainLight(shadowCoord));
                 terrainColor.rgb *= lighting;
                 
-                terrainColor.a = GetDepthValue(IN.worldPos.w, _ProjectionParams.y, _ProjectionParams.z);
-                
                 return terrainColor;
             }
             ENDHLSL
         }
+        Pass
+        {
+            Name "KadirPackedPass"
+            Tags { "LightMode" = "KadirPackedPass" }
+            
+            HLSLPROGRAM
+
+            #pragma vertex vert
+            #pragma fragment frag
+
+            uint frag(Varyings IN) : SV_Target
+            {
+                half4 terrainColor = fragmentCalculation(IN);
+                
+                return PackRGBA(terrainColor, 1);
+            }
+            ENDHLSL
+        }
+
     }
 }

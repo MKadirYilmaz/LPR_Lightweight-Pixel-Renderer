@@ -8,81 +8,89 @@ Shader "Custom/CelLightingModel"
 
     SubShader
     {
-        Tags { "RenderType" = "Opaque" "RenderPipeline" = "UniversalPipeline" /*"Queue" = "AlphaTest+50"*/}
+        Tags { "RenderType" = "Opaque" "RenderPipeline" = "UniversalPipeline"}
 
+        HLSLINCLUDE
+        #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE
+        
+        #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+        #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
+        
+        half _ShadowLight;
+        #define SHADOW_LIGHT _ShadowLight
+        #include "Assets/Shaders/Lighting/CustomLighting.hlsl"
+        #include "Assets/Shaders/Style/PixelArt/DepthCalculations.hlsl"
+
+        struct Attributes { float4 positionOS : POSITION; float2 uv : TEXCOORD0; float3 normalOS : NORMAL; };
+        struct Varyings { float4 positionHCS : SV_POSITION; float2 uv : TEXCOORD0; float3 normalWS : NORMAL; float3 worldPos : TEXCOORD1; float zEye : TEXCOORD2; };
+
+        TEXTURE2D(_BaseMap);
+        SAMPLER(sampler_BaseMap);
+        float4 _BaseMap_ST;
+
+        Varyings vert(Attributes IN)
+        {
+            Varyings OUT;
+            OUT.positionHCS = TransformObjectToHClip(IN.positionOS.xyz);
+            OUT.normalWS = TransformObjectToWorldNormal(IN.normalOS);
+            OUT.worldPos = TransformObjectToWorld(IN.positionOS.xyz);
+            OUT.uv = TRANSFORM_TEX(IN.uv, _BaseMap);
+            VertexPositionInputs vertexInputs = GetVertexPositionInputs(IN.positionOS.xyz);
+            OUT.zEye = -vertexInputs.positionVS.z;
+            return OUT;
+        }
+        
+        half4 CalculateSurfaceColor(Varyings IN)
+        {
+            half4 color = SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, IN.uv);
+            
+            float3 normal = IN.normalWS;
+            float3 objectWorldPos = UNITY_MATRIX_M._m03_m13_m23;
+            float3 fragPos = IN.worldPos;
+            float4 shadowCoord = TransformWorldToShadowCoord(IN.worldPos);
+            
+            half3 diffuse = CelLighting(normal, objectWorldPos, fragPos, GetMainLight(shadowCoord));
+            color.rgb *= diffuse;
+            color.a = GetDepthValue(IN.zEye, _ProjectionParams.y, _ProjectionParams.z);
+            
+            return color;
+        }
+        ENDHLSL
+        
         Pass
         {
-            //ColorMask RGB // Uncomment if you want to write depth to alpha channel for stylized depth-based effects
-            
+            Name "UniversalForward"
             Tags { "LightMode" = "UniversalForward" }
             
             HLSLPROGRAM
-
             #pragma vertex vert
-            #pragma fragment frag
-            #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE
-            
-            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
-            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
-            
-            half _ShadowLight;
-            #define SHADOW_LIGHT _ShadowLight
-            #include "Assets/Shaders/Lighting/CustomLighting.hlsl"
-            #include "Assets/Shaders/Style/PixelArt/DepthCalculations.hlsl"
+            #pragma fragment fragEditor
 
-            struct Attributes
+            half4 fragEditor(Varyings IN) : SV_Target
             {
-                float4 positionOS : POSITION;
-                float2 uv : TEXCOORD0;
-                float3 normalOS : NORMAL;
-            };
-
-            struct Varyings
-            {
-                float4 positionHCS : SV_POSITION;
-                float2 uv : TEXCOORD0;
-                float3 normalWS : NORMAL;
-                float3 worldPos : TEXCOORD1;
-                float zEye : TEXCOORD2;
-            };
-
-            TEXTURE2D(_BaseMap);
-            SAMPLER(sampler_BaseMap);
-            float4 _BaseMap_ST;
-
-            Varyings vert(Attributes IN)
-            {
-                Varyings OUT;
-                OUT.positionHCS = TransformObjectToHClip(IN.positionOS.xyz);
-                OUT.normalWS = TransformObjectToWorldNormal(IN.normalOS);
-                OUT.worldPos = TransformObjectToWorld(IN.positionOS.xyz);
-                OUT.uv = TRANSFORM_TEX(IN.uv, _BaseMap);
-                
-                VertexPositionInputs vertexInputs = GetVertexPositionInputs(IN.positionOS.xyz);
-                OUT.zEye = -vertexInputs.positionVS.z;
-                
-                return OUT;
-            }
-
-            half4 frag(Varyings IN) : SV_Target
-            {
-                half4 color = SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, IN.uv);
-                
-                float3 normal = IN.normalWS;
-                float3 objectWorldPos = UNITY_MATRIX_M._m03_m13_m23;
-                float3 fragPos = IN.worldPos;
-                float4 shadowCoord = TransformWorldToShadowCoord(IN.worldPos);
-                
-                half3 diffuse = CelLighting(normal, objectWorldPos, fragPos, GetMainLight(shadowCoord));
-                color.rgb *= diffuse;
-                
-                color.a = GetDepthValue(IN.zEye, _ProjectionParams.y, _ProjectionParams.z);
-                
-                return color;
+                return CalculateSurfaceColor(IN); 
             }
             ENDHLSL
         }
         
+        Pass
+        {
+            Name "KadirPackedPass"
+            Tags { "LightMode" = "KadirPackedPass" }
+            
+            HLSLPROGRAM
+            #pragma vertex vert
+            #pragma fragment fragGame
+
+            uint fragGame(Varyings IN) : SV_Target0
+            {
+                half4 color = CalculateSurfaceColor(IN);
+                
+                return PackRGBA(color, 1); 
+            }
+            ENDHLSL
+        }
+
         Pass
         {
             Name "ShadowCaster"

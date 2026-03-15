@@ -8,15 +8,9 @@ Shader "Custom/TerrainGrass"
 
     SubShader
     {
-        Tags { "RenderType" = "Opaque" "RenderPipeline" = "UniversalPipeline" "Queue" = "AlphaTest+50"}
-
-        Pass
-        {
-            ColorMask RGB
-            HLSLPROGRAM
-
-            #pragma vertex vert
-            #pragma fragment frag
+        Tags { "RenderType" = "Opaque" "RenderPipeline" = "UniversalPipeline"}
+        
+        HLSLINCLUDE
             #pragma multi_compile_instancing  // GPU Instancing
             #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE
 
@@ -71,7 +65,7 @@ Shader "Custom/TerrainGrass"
                 return OUT;
             }
 
-            half4 frag(Varyings IN) : SV_Target
+            half4 fragmentCalculation(Varyings IN) : SV_Target
             {
                 UNITY_SETUP_INSTANCE_ID(IN);
 
@@ -90,7 +84,40 @@ Shader "Custom/TerrainGrass"
                 
                 return tColor;
             }
+        ENDHLSL
+        
+        Pass
+        {
+            Name "UniversalForward"
+            Tags { "LightMode" = "UniversalForward" }
+            
+            HLSLPROGRAM
 
+            #pragma vertex vert
+            #pragma fragment frag
+
+            half4 frag(Varyings IN) : SV_Target
+            {
+                return fragmentCalculation(IN);
+            }
+
+            ENDHLSL
+        }
+
+        Pass
+        {
+            Name "KadirPackedPass"
+            Tags { "LightMode" = "KadirPackedPass" }
+            
+            HLSLPROGRAM
+            #pragma vertex vert
+            #pragma fragment fragGame
+
+            uint fragGame(Varyings IN) : SV_Target0
+            {
+                half4 color = fragmentCalculation(IN);
+                return PackRGBA(color, 0); 
+            }
             ENDHLSL
         }
     }

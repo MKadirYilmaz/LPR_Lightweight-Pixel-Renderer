@@ -30,15 +30,9 @@ Shader "Custom/WindyTree"
         }
         Cull Off
 
-        Pass
-        {
-            HLSLPROGRAM
-
-            #pragma vertex vert
-            #pragma fragment frag
+        HLSLINCLUDE
             #pragma multi_compile_instancing
             #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE
-
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
             #include "Assets/Shaders/Lighting/CustomLighting.hlsl"
@@ -104,7 +98,7 @@ Shader "Custom/WindyTree"
                 return OUT;
             }
 
-            half4 frag(Varyings IN) : SV_Target
+            half4 fragmentCalculation(Varyings IN)
             {
                 float2 uvMain = IN.uv * _MainTexture_ST.xy + _MainTexture_ST.zw;
                 float4 mainTex = SAMPLE_TEXTURE2D(_MainTexture, sampler_MainTexture, uvMain);
@@ -121,13 +115,46 @@ Shader "Custom/WindyTree"
                 half3 diffuse = CelLighting(IN.normalWS, UNITY_MATRIX_M._m03_m13_m23, 
                     IN.worldPos, GetMainLight(shadowCoord));
                 finalColor.rgb *= diffuse;
-                
                 finalColor.a = GetDepthValue(IN.zEye, _ProjectionParams.y, _ProjectionParams.z);
-                
                 return finalColor;
+            }
+        ENDHLSL
+        
+        Pass
+        {
+            Name "UniversalForward"
+            Tags { "LightMode" = "UniversalForward" }
+            
+            HLSLPROGRAM
+
+            #pragma vertex vert
+            #pragma fragment frag
+
+            half4 frag(Varyings IN) : SV_Target
+            {
+                return fragmentCalculation(IN);
             }
             ENDHLSL
         }
+
+        Pass
+        {
+            Name "KadirPackedPass"
+            Tags { "LightMode" = "KadirPackedPass" }
+            
+            HLSLPROGRAM
+
+            #pragma vertex vert
+            #pragma fragment frag
+
+            uint frag(Varyings IN) : SV_Target
+            {
+                half4 finalColor = fragmentCalculation(IN);
+                return PackRGBA(finalColor, 1);
+            }
+            ENDHLSL
+        }
+
         Pass
         {
             Name "ShadowCaster"
@@ -148,17 +175,6 @@ Shader "Custom/WindyTree"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Shadows.hlsl"
             
-            #include "Assets/Shaders/Misc/FoliageVertexManipulation.hlsl"
-            
-            CBUFFER_START(UnityPerMaterial)
-                float  _Big_WindSpeed;
-                float  _Big_WindAmount;
-                float  _Big_Frequency;
-
-                float  _Small_WindSpeed;
-                float  _Small_WindAmount;
-                float  _Small_Frequency;
-            CBUFFER_END
 
             struct AttributesShadow {
                 float4 positionOS : POSITION;
