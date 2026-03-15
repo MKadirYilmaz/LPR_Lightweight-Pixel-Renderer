@@ -103,24 +103,45 @@ Shader "Terrain/TerrainUnlit"
 
             #pragma vertex vert
             #pragma fragment frag
+            
+            #pragma multi_compile _ _USE_UNITY_PBR_LIT
 
             half4 frag(Varyings IN) : SV_Target
             {
-                half4 control = SAMPLE_TEXTURE2D(_Control, sampler_Control, IN.uvControl); // R = Splat0, G = Splat1, B = Splat2, A = Splat3
+                #if defined(_USE_UNITY_PBR_LIT)
+                    
+                    SurfaceData surfaceData = (SurfaceData)0;
                 
-                half4 splat0 = SAMPLE_TEXTURE2D(_Splat0, sampler_Splat0, IN.uvSplat0_1.xy);
-                half4 splat1 = SAMPLE_TEXTURE2D(_Splat1, sampler_Splat1, IN.uvSplat0_1.zw);
-                half4 splat2 = SAMPLE_TEXTURE2D(_Splat2, sampler_Splat2, IN.uvSplat2_3.xy);
-                half4 splat3 = SAMPLE_TEXTURE2D(_Splat3, sampler_Splat3, IN.uvSplat2_3.zw);
+                    half4 control = SAMPLE_TEXTURE2D(_Control, sampler_Control, IN.uvControl); // R = Splat0, G = Splat1, B = Splat2, A = Splat3
                 
-                half4 terrainColor = control.r * splat0 + control.g * splat1 + control.b * splat2 + control.a * splat3;
+                    half4 splat0 = SAMPLE_TEXTURE2D(_Splat0, sampler_Splat0, IN.uvSplat0_1.xy);
+                    half4 splat1 = SAMPLE_TEXTURE2D(_Splat1, sampler_Splat1, IN.uvSplat0_1.zw);
+                    half4 splat2 = SAMPLE_TEXTURE2D(_Splat2, sampler_Splat2, IN.uvSplat2_3.xy);
+                    half4 splat3 = SAMPLE_TEXTURE2D(_Splat3, sampler_Splat3, IN.uvSplat2_3.zw);
+                    
+                    half4 texColor = control.r * splat0 + control.g * splat1 + control.b * splat2 + control.a * splat3;
                 
-                float4 shadowCoord = TransformWorldToShadowCoord(IN.worldPos);
-                half3 lighting = CelLighting(IN.normalWS, UNITY_MATRIX_M._m03_m13_m23, 
-                    IN.worldPos.xyz, GetMainLight(shadowCoord));
-                terrainColor.rgb *= lighting;
+                    surfaceData.albedo = texColor.rgb;
+                    surfaceData.alpha = texColor.a;
+                    surfaceData.metallic = 0.0;     
+                    surfaceData.smoothness = 0.0;   
+                    surfaceData.normalTS = float3(0, 0, 1);
+                    surfaceData.emission = 0;
+                    surfaceData.occlusion = 1;
                 
-                return terrainColor;
+                    InputData inputData = (InputData)0;
+                    inputData.positionWS = IN.worldPos;
+                    inputData.normalWS = normalize(IN.normalWS);
+                    inputData.viewDirectionWS = GetWorldSpaceNormalizeViewDir(IN.worldPos);
+                    inputData.shadowCoord = TransformWorldToShadowCoord(IN.worldPos);
+                    inputData.bakedGI = half3(0, 0, 0);
+                    inputData.normalizedScreenSpaceUV = 0;
+                    inputData.shadowMask = half4(1, 1, 1, 1);
+                    
+                    return UniversalFragmentPBR(inputData, surfaceData);
+                #else
+                    return fragmentCalculation(IN);
+                #endif
             }
             ENDHLSL
         }

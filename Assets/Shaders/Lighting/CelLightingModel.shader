@@ -65,10 +65,36 @@ Shader "Custom/CelLightingModel"
             HLSLPROGRAM
             #pragma vertex vert
             #pragma fragment fragEditor
+            #pragma multi_compile _ _USE_UNITY_PBR_LIT
 
             half4 fragEditor(Varyings IN) : SV_Target
             {
-                return CalculateSurfaceColor(IN); 
+                #if defined(_USE_UNITY_PBR_LIT)
+                    
+                    SurfaceData surfaceData = (SurfaceData)0;
+                    half4 texColor = SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, IN.uv);
+                    surfaceData.albedo = texColor.rgb;
+                    surfaceData.alpha = texColor.a;
+                    surfaceData.metallic = 0.0;     
+                    surfaceData.smoothness = 0.0;   
+                    surfaceData.normalTS = float3(0, 0, 1);
+                    surfaceData.emission = 0;
+                    surfaceData.occlusion = 1;
+                
+                    InputData inputData = (InputData)0;
+                    inputData.positionWS = IN.worldPos;
+                    inputData.normalWS = normalize(IN.normalWS);
+                    inputData.viewDirectionWS = GetWorldSpaceNormalizeViewDir(IN.worldPos);
+                    inputData.shadowCoord = TransformWorldToShadowCoord(IN.worldPos);
+                    inputData.bakedGI = half3(0, 0, 0);
+                    inputData.normalizedScreenSpaceUV = 0;
+                    inputData.shadowMask = half4(1, 1, 1, 1);
+                
+                    return UniversalFragmentPBR(inputData, surfaceData);
+                #else
+                    return CalculateSurfaceColor(IN);
+                #endif
+                
             }
             ENDHLSL
         }

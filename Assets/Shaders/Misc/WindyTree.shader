@@ -129,10 +129,44 @@ Shader "Custom/WindyTree"
 
             #pragma vertex vert
             #pragma fragment frag
+            #pragma multi_compile _ _USE_UNITY_PBR_LIT
 
             half4 frag(Varyings IN) : SV_Target
             {
-                return fragmentCalculation(IN);
+                #if defined(_USE_UNITY_PBR_LIT)
+                    
+                    SurfaceData surfaceData = (SurfaceData)0;
+                    float2 uvMain = IN.uv * _MainTexture_ST.xy + _MainTexture_ST.zw;
+                    float4 mainTex = SAMPLE_TEXTURE2D(_MainTexture, sampler_MainTexture, uvMain);
+
+                    // Apply alpha cutoff
+                    clip(mainTex.a - _Cutoff);
+
+                    float2 uvEmission = IN.uv * _Emission_ST.xy + _Emission_ST.zw;
+                    float4 emission = SAMPLE_TEXTURE2D(_Emission, sampler_Emission, uvEmission);
+
+                    float4 texColor = mainTex * _ColorTint + emission * _EmissionColor;
+                    surfaceData.albedo = texColor.rgb;
+                    surfaceData.alpha = texColor.a;
+                    surfaceData.metallic = 0.0;     
+                    surfaceData.smoothness = 0.0;   
+                    surfaceData.normalTS = float3(0, 0, 1);
+                    surfaceData.emission = 0;
+                    surfaceData.occlusion = 1;
+                
+                    InputData inputData = (InputData)0;
+                    inputData.positionWS = IN.worldPos;
+                    inputData.normalWS = normalize(IN.normalWS);
+                    inputData.viewDirectionWS = GetWorldSpaceNormalizeViewDir(IN.worldPos);
+                    inputData.shadowCoord = TransformWorldToShadowCoord(IN.worldPos);
+                    inputData.bakedGI = half3(0, 0, 0);
+                    inputData.normalizedScreenSpaceUV = 0;
+                    inputData.shadowMask = half4(1, 1, 1, 1);
+                    
+                    return UniversalFragmentPBR(inputData, surfaceData);
+                #else
+                    return fragmentCalculation(IN);
+                #endif
             }
             ENDHLSL
         }

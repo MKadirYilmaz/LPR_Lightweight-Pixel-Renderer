@@ -95,10 +95,39 @@ Shader "Custom/TerrainGrass"
 
             #pragma vertex vert
             #pragma fragment frag
+            
+            #pragma multi_compile _ _USE_UNITY_PBR_LIT
 
             half4 frag(Varyings IN) : SV_Target
             {
-                return fragmentCalculation(IN);
+                #if defined(_USE_UNITY_PBR_LIT)
+                    
+                    SurfaceData surfaceData = (SurfaceData)0;
+                    float2 diff = IN.worldPos.xz - TERRAIN_COORD;
+                    float2 uv = float2(diff.x / TERRAIN_SIZE.x, diff.y / TERRAIN_SIZE.y);
+
+                    half4 texColor = SAMPLE_TEXTURE2D(_TerrainColorMap, sampler_TerrainColorMap, uv);
+                    surfaceData.albedo = texColor.rgb;
+                    surfaceData.alpha = texColor.a;
+                    surfaceData.metallic = 0.0;     
+                    surfaceData.smoothness = 0.0;   
+                    surfaceData.normalTS = float3(0, 0, 1);
+                    surfaceData.emission = 0;
+                    surfaceData.occlusion = 1;
+                
+                    InputData inputData = (InputData)0;
+                    inputData.positionWS = IN.worldPos;
+                    inputData.normalWS = normalize(float3(0.0, 1.0, 0.0)); // Upward facing normal for grass
+                    inputData.viewDirectionWS = GetWorldSpaceNormalizeViewDir(IN.worldPos);
+                    inputData.shadowCoord = TransformWorldToShadowCoord(IN.worldPos);
+                    inputData.bakedGI = half3(0, 0, 0);
+                    inputData.normalizedScreenSpaceUV = 0;
+                    inputData.shadowMask = half4(1, 1, 1, 1);
+                    
+                    return UniversalFragmentPBR(inputData, surfaceData);
+                #else
+                    return fragmentCalculation(IN);
+                #endif
             }
 
             ENDHLSL
