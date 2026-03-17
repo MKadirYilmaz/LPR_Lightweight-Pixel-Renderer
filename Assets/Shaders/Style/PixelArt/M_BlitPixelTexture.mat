@@ -31,6 +31,14 @@ Material:
         m_Texture: {fileID: 8400000, guid: c2c8f80303b3fd144a9ce76d29f29a6d, type: 2}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
+    - _MainCameraDepth:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _MainDepthTexture:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
     - _SourceTexture:
         m_Texture: {fileID: 8400000, guid: c2c8f80303b3fd144a9ce76d29f29a6d, type: 2}
         m_Scale: {x: 1, y: 1}

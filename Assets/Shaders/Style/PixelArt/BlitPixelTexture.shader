@@ -4,6 +4,7 @@ Shader "Custom/PixelPerfectBlit"
     {
         _SourceTexture ("Source Texture", 2D) = "white" {}
         _NormalOutlineThreshold ("Normal Outline Threshold", Range(0.001, 0.2)) = 0.01
+        _MainCameraDepth ("Main Camera Depth Texture", 2D) = "white" {}
     }
 
     SubShader
@@ -14,26 +15,13 @@ Shader "Custom/PixelPerfectBlit"
             "RenderPipeline" = "UniversalPipeline"
         }
 
-        Pass
-        {
-            ZWrite Off
-            ZTest Always
-            Blend Off
-            Cull Off
-
-            HLSLPROGRAM
-            #pragma vertex vert
-            #pragma fragment frag
+        HLSLINCLUDE
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
-            
             #include "Assets/Shaders/Style/PixelArt/DepthCalculations.hlsl"
-            
-            Texture2D<uint> _SourceTexture;
 
             CBUFFER_START(UnityPerMaterial)
                 float4 _SourceTexture_ST;
                 float4 _SourceTexture_TexelSize;
-                float _DepthOutlineThreshold;
                 float _NormalOutlineThreshold;
             CBUFFER_END
 
@@ -58,58 +46,121 @@ Shader "Custom/PixelPerfectBlit"
                 #endif
                 return OUT;
             }
+        
+        ENDHLSL
+        
+        Pass
+        {
+            ZWrite Off
+            ZTest Always
+            Blend Off
+            Cull Off
 
+            HLSLPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+            #pragma multi_compile _ _USE_UNITY_PBR_LIT
+
+            #if defined(_USE_UNITY_PBR_LIT)
+                TEXTURE2D(_SourceTexture);
+                SAMPLER(sampler_point_clamp);
+            
+                TEXTURE2D(_MainCameraDepth);
+                SAMPLER(sampler_MainCameraDepth);
+            #else 
+                Texture2D<uint> _SourceTexture;
+            #endif
+            
+            
             half4 frag(Varyings IN) : SV_Target
             {
-                uint rtWidth, rtHeight;
-                _SourceTexture.GetDimensions(rtWidth, rtHeight);
+                #if defined(_USE_UNITY_PBR_LIT)
+                    half4 color = SAMPLE_TEXTURE2D(_SourceTexture, sampler_point_clamp, IN.uv);
+                    color.rgb = SmartQuantize(color.rgb, 32.0, 0.3, half3(1.0, 1.0, 1.0));
                 
-                int2 pixelCoord = int2(IN.uv * float2(rtWidth, rtHeight));
+                    // Unity'nin standart doku boyutu değişkenini kullanıyoruz
+                    float2 texelSize = _SourceTexture_TexelSize.xy;
+                    
+                    // 1. Standart Depth Texture'dan 5 yönlü ham (Raw) derinlik oku
+                    float rawCenter = SAMPLE_TEXTURE2D(_MainCameraDepth, sampler_MainCameraDepth, IN.uv).r;
+                    float rawUp     = SAMPLE_TEXTURE2D(_MainCameraDepth, sampler_MainCameraDepth, IN.uv + float2(0.0, texelSize.y)).r;
+                    float rawDown   = SAMPLE_TEXTURE2D(_MainCameraDepth, sampler_MainCameraDepth, IN.uv + float2(0.0, -texelSize.y)).r;
+                    float rawLeft   = SAMPLE_TEXTURE2D(_MainCameraDepth, sampler_MainCameraDepth, IN.uv + float2(-texelSize.x, 0.0)).r;
+                    float rawRight  = SAMPLE_TEXTURE2D(_MainCameraDepth, sampler_MainCameraDepth, IN.uv + float2(texelSize.x, 0.0)).r;
+                    
+                    // 2. Ham derinliği Lineer (0-1) aralığına çevir. 
+                    // BU DEĞERLER DOĞRUDAN SENİN "centerLin, upLin..." DEĞERLERİNE EŞİTTİR! (pow gerekmez)
+                    float centerLin = Linear01Depth(rawCenter, _ZBufferParams);
+                    float upLin     = Linear01Depth(rawUp, _ZBufferParams);
+                    float downLin   = Linear01Depth(rawDown, _ZBufferParams);
+                    float leftLin   = Linear01Depth(rawLeft, _ZBufferParams);
+                    float rightLin  = Linear01Depth(rawRight, _ZBufferParams);
+                    
+                    // 3. Senin Kusursuz Laplacian (2. Türev) Matematiğin
+                    float curveX = (leftLin + rightLin) - (2.0 * centerLin);
+                    float curveY = (upLin + downLin) - (2.0 * centerLin);
+                    
+                    half isInnerEdge = 0;
+                    isInnerEdge += step(_NormalOutlineThreshold, curveX);
+                    isInnerEdge += step(_NormalOutlineThreshold, curveY);
+                    
+                    // Not: Unity'nin standart derinlik dokusunda bizim o 1-bitlik Outline Flag'imiz YOKTUR.
+                    // O yüzden outline işlemi ekrandaki her şeye (gökyüzü dahil) uygulanır.
+                    isInnerEdge = saturate(isInnerEdge);
+                    
+                    return lerp(color, half4(0.0, 0.0, 0.0, color.a), isInnerEdge);
+                    return half4(centerLin, centerLin, centerLin, 1.0); // Depth visualization for testing
+                #else
+                    uint rtWidth, rtHeight;
+                    _SourceTexture.GetDimensions(rtWidth, rtHeight);
+                    
+                    int2 pixelCoord = int2(IN.uv * float2(rtWidth, rtHeight));
+                    
+                    // Load function requires XY integer coordinates and mip level (0 for base level)
+                    uint packedData = _SourceTexture.Load(int3(pixelCoord, 0));
+                    uint outlineFlag;
+                    float4 color = UnpackRGBA(packedData, outlineFlag);
+                    
+                    //color.rgb = color.a; // Depth visualization for testing
+                    
+                    float depth = color.a;
+                    
+                    uint temp;
+                    float depthUp    = UnpackRGBA(_SourceTexture.Load(int3(pixelCoord + int2(0.0, 1.0), 0)), temp).a;
+                    float depthDown  = UnpackRGBA(_SourceTexture.Load(int3(pixelCoord + int2(0.0, -1.0), 0)), temp).a;
+                    float depthLeft  = UnpackRGBA(_SourceTexture.Load(int3(pixelCoord + int2(-1.0, 0.0), 0)), temp).a;
+                    float depthRight = UnpackRGBA(_SourceTexture.Load(int3(pixelCoord + int2(1.0, 0.0), 0)), temp).a;
+                    
+                    float centerLin = pow(depth, 1.0 / DEPTH_POW);
+                    float upLin = pow(depthUp, 1.0 / DEPTH_POW);
+                    float downLin = pow(depthDown, 1.0 / DEPTH_POW);
+                    float leftLin = pow(depthLeft, 1.0 / DEPTH_POW);
+                    float rightLin = pow(depthRight, 1.0 / DEPTH_POW);
+                    
+                    // Calculate the normal using central differences
+                    float dzdx = rightLin - leftLin;
+                    float dzdy = upLin - downLin;
+                    // We can calculate normal texture here by with no additional texture fetches, using the depth values we already have.
+                    half3 normal = normalize(float3(dzdx, dzdy, 0.01)); 
+                    
+                    // Calculate curvature using the second derivative (Laplacian) of the depth
+                    float curveX = (leftLin + rightLin) - (2.0 * centerLin);
+                    float curveY = (upLin + downLin) - (2.0 * centerLin);
+                    
+                    // Determine if the pixel is an inner edge based on curvature thresholds
+                    half isInnerEdge = 0;
+                    isInnerEdge += step(_NormalOutlineThreshold, curveX);
+                    isInnerEdge += step(_NormalOutlineThreshold, curveY);
+                    isInnerEdge = saturate(isInnerEdge) * outlineFlag;
+                    
+                    half4 finalColor = lerp(color, half4(0.0, 0.0, 0.0, color.a), isInnerEdge);
+                    
+                    return finalColor;
+                    color.rgb = depth; // Normal visualization for testing
+                    return color;
+                #endif
                 
-                // Load function requires XY integer coordinates and mip level (0 for base level)
-                uint packedData = _SourceTexture.Load(int3(pixelCoord, 0));
-                uint outlineFlag;
-                float4 color = UnpackRGBA(packedData, outlineFlag);
-                
-                //color.rgb = color.a; // Depth visualization for testing
-                
-                float depth = color.a;
-                
-                uint temp;
-                float depthUp    = UnpackRGBA(_SourceTexture.Load(int3(pixelCoord + int2(0.0, 1.0), 0)), temp).a;
-                float depthDown  = UnpackRGBA(_SourceTexture.Load(int3(pixelCoord + int2(0.0, -1.0), 0)), temp).a;
-                float depthLeft  = UnpackRGBA(_SourceTexture.Load(int3(pixelCoord + int2(-1.0, 0.0), 0)), temp).a;
-                float depthRight = UnpackRGBA(_SourceTexture.Load(int3(pixelCoord + int2(1.0, 0.0), 0)), temp).a;
-                
-                float centerLin = pow(depth, 1.0 / DEPTH_POW);
-                float upLin = pow(depthUp, 1.0 / DEPTH_POW);
-                float downLin = pow(depthDown, 1.0 / DEPTH_POW);
-                float leftLin = pow(depthLeft, 1.0 / DEPTH_POW);
-                float rightLin = pow(depthRight, 1.0 / DEPTH_POW);
-                
-                // Calculate the normal using central differences
-                float dzdx = rightLin - leftLin;
-                float dzdy = upLin - downLin;
-                // We can calculate normal texture here by with no additional texture fetches, using the depth values we already have.
-                half3 normal = normalize(float3(dzdx, dzdy, 0.01)); 
-                
-                // Calculate curvature using the second derivative (Laplacian) of the depth
-                float curveX = (leftLin + rightLin) - (2.0 * centerLin);
-                float curveY = (upLin + downLin) - (2.0 * centerLin);
-                
-                // Determine if the pixel is an inner edge based on curvature thresholds
-                half isInnerEdge = 0;
-                isInnerEdge += step(_NormalOutlineThreshold, curveX);
-                isInnerEdge += step(_NormalOutlineThreshold, curveY);
-                isInnerEdge = saturate(isInnerEdge) * outlineFlag;
-                
-                half4 finalColor = lerp(color, half4(0.0, 0.0, 0.0, color.a), isInnerEdge);
-                
-                return finalColor;
-                color.rgb = depth; // Normal visualization for testing
-                return color;
             }
-
             ENDHLSL
         }
     }
