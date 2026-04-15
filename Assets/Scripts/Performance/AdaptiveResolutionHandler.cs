@@ -32,6 +32,8 @@ public class AdaptiveResolutionHandler : MonoBehaviour
         int width  = Mathf.Max(1, Mathf.RoundToInt(Screen.width  * resolutionScale));
         int height = Mathf.Max(1, Mathf.RoundToInt(Screen.height * resolutionScale));
         
+        lowResCamera.aspect = (float)width / (float)height;
+        
         RenderTexture rt = lowResCamera.targetTexture;
         
         rt.Release();
@@ -45,7 +47,6 @@ public class AdaptiveResolutionHandler : MonoBehaviour
         depthTexture.Create();
         
         lowResCamera.targetTexture = rt;
-        lowResCamera.aspect = (float)width / (float)height;
 
         lastScreenWidth  = Screen.width;
         lastScreenHeight = Screen.height;

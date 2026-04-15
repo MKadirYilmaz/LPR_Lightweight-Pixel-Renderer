@@ -60,6 +60,7 @@ Shader "Custom/PixelPerfectBlit"
             #pragma vertex vert
             #pragma fragment frag
             #pragma multi_compile _ _USE_UNITY_PBR_LIT
+            #pragma shader_feature _ _RENDER_NORMALS _RENDER_DEPTH
 
             #if defined(_USE_UNITY_PBR_LIT)
                 TEXTURE2D(_SourceTexture);
@@ -75,41 +76,53 @@ Shader "Custom/PixelPerfectBlit"
             half4 frag(Varyings IN) : SV_Target
             {
                 #if defined(_USE_UNITY_PBR_LIT)
+                
                     half4 color = SAMPLE_TEXTURE2D(_SourceTexture, sampler_point_clamp, IN.uv);
                     color.rgb = SmartQuantize(color.rgb, 32.0, 0.3, half3(1.0, 1.0, 1.0));
-                
-                    // Unity'nin standart doku boyutu değişkenini kullanıyoruz
-                    float2 texelSize = _SourceTexture_TexelSize.xy;
+
                     
-                    // 1. Standart Depth Texture'dan 5 yönlü ham (Raw) derinlik oku
+                    uint screenWidth, screenHeight;
+                    _MainCameraDepth.GetDimensions(screenWidth, screenHeight);
+                    // Texel size calculation for navigating to neighboring pixels in the depth texture
+                    float2 texelSize = float2(1.0 / float(screenWidth), 1.0 / float(screenHeight));
+                
                     float rawCenter = SAMPLE_TEXTURE2D(_MainCameraDepth, sampler_MainCameraDepth, IN.uv).r;
+                    float centerLin = Linear01Depth(rawCenter, _ZBufferParams);
+                    
+                    #if defined(_RENDER_DEPTH)
+                        return half4(centerLin, centerLin, centerLin, 1.0); // Depth visualization for testing
+                    #endif
+                
                     float rawUp     = SAMPLE_TEXTURE2D(_MainCameraDepth, sampler_MainCameraDepth, IN.uv + float2(0.0, texelSize.y)).r;
                     float rawDown   = SAMPLE_TEXTURE2D(_MainCameraDepth, sampler_MainCameraDepth, IN.uv + float2(0.0, -texelSize.y)).r;
                     float rawLeft   = SAMPLE_TEXTURE2D(_MainCameraDepth, sampler_MainCameraDepth, IN.uv + float2(-texelSize.x, 0.0)).r;
                     float rawRight  = SAMPLE_TEXTURE2D(_MainCameraDepth, sampler_MainCameraDepth, IN.uv + float2(texelSize.x, 0.0)).r;
-                    
-                    // 2. Ham derinliği Lineer (0-1) aralığına çevir. 
-                    // BU DEĞERLER DOĞRUDAN SENİN "centerLin, upLin..." DEĞERLERİNE EŞİTTİR! (pow gerekmez)
-                    float centerLin = Linear01Depth(rawCenter, _ZBufferParams);
+                
                     float upLin     = Linear01Depth(rawUp, _ZBufferParams);
                     float downLin   = Linear01Depth(rawDown, _ZBufferParams);
                     float leftLin   = Linear01Depth(rawLeft, _ZBufferParams);
                     float rightLin  = Linear01Depth(rawRight, _ZBufferParams);
-                    
-                    // 3. Senin Kusursuz Laplacian (2. Türev) Matematiğin
+                
+                    #if defined(_RENDER_NORMALS)
+                        // Calculate the normal using central differences
+                        float dzdx = rightLin - leftLin;
+                        float dzdy = upLin - downLin;
+                        // We can calculate normal texture here by with no additional texture fetches, using the depth values we already have.
+                        half3 normal = normalize(float3(dzdx, dzdy, 0.01));
+                        return half4(normal, 1.0); // Normal visualization for testing
+                    #endif
+                
+                    // Calculate curvature using the second derivative (Laplacian) of the depth
                     float curveX = (leftLin + rightLin) - (2.0 * centerLin);
                     float curveY = (upLin + downLin) - (2.0 * centerLin);
-                    
+
                     half isInnerEdge = 0;
                     isInnerEdge += step(_NormalOutlineThreshold, curveX);
                     isInnerEdge += step(_NormalOutlineThreshold, curveY);
-                    
-                    // Not: Unity'nin standart derinlik dokusunda bizim o 1-bitlik Outline Flag'imiz YOKTUR.
-                    // O yüzden outline işlemi ekrandaki her şeye (gökyüzü dahil) uygulanır.
+                
                     isInnerEdge = saturate(isInnerEdge);
-                    
+
                     return lerp(color, half4(0.0, 0.0, 0.0, color.a), isInnerEdge);
-                    return half4(centerLin, centerLin, centerLin, 1.0); // Depth visualization for testing
                 #else
                     uint rtWidth, rtHeight;
                     _SourceTexture.GetDimensions(rtWidth, rtHeight);
@@ -124,24 +137,29 @@ Shader "Custom/PixelPerfectBlit"
                     //color.rgb = color.a; // Depth visualization for testing
                     
                     float depth = color.a;
-                    
-                    uint temp;
-                    float depthUp    = UnpackRGBA(_SourceTexture.Load(int3(pixelCoord + int2(0.0, 1.0), 0)), temp).a;
-                    float depthDown  = UnpackRGBA(_SourceTexture.Load(int3(pixelCoord + int2(0.0, -1.0), 0)), temp).a;
-                    float depthLeft  = UnpackRGBA(_SourceTexture.Load(int3(pixelCoord + int2(-1.0, 0.0), 0)), temp).a;
-                    float depthRight = UnpackRGBA(_SourceTexture.Load(int3(pixelCoord + int2(1.0, 0.0), 0)), temp).a;
-                    
                     float centerLin = pow(depth, 1.0 / DEPTH_POW);
+                    #if defined(_RENDER_DEPTH)
+                        return half4(centerLin, centerLin, centerLin, 1.0); // Depth visualization for testing
+                    #endif
+                
+                    float depthUp    = UnpackDepth(_SourceTexture.Load(int3(pixelCoord + int2(0.0, 1.0), 0)));
+                    float depthDown  = UnpackDepth(_SourceTexture.Load(int3(pixelCoord + int2(0.0, -1.0), 0)));
+                    float depthLeft  = UnpackDepth(_SourceTexture.Load(int3(pixelCoord + int2(-1.0, 0.0), 0)));
+                    float depthRight = UnpackDepth(_SourceTexture.Load(int3(pixelCoord + int2(1.0, 0.0), 0)));
+                    
                     float upLin = pow(depthUp, 1.0 / DEPTH_POW);
                     float downLin = pow(depthDown, 1.0 / DEPTH_POW);
                     float leftLin = pow(depthLeft, 1.0 / DEPTH_POW);
                     float rightLin = pow(depthRight, 1.0 / DEPTH_POW);
                     
-                    // Calculate the normal using central differences
-                    float dzdx = rightLin - leftLin;
-                    float dzdy = upLin - downLin;
-                    // We can calculate normal texture here by with no additional texture fetches, using the depth values we already have.
-                    half3 normal = normalize(float3(dzdx, dzdy, 0.01)); 
+                    #if defined(_RENDER_NORMALS)
+                        // Calculate the normal using central differences
+                        float dzdx = rightLin - leftLin;
+                        float dzdy = upLin - downLin;
+                        // We can calculate normal texture here by with no additional texture fetches, using the depth values we already have.
+                        half3 normal = normalize(float3(dzdx, dzdy, 0.01));
+                        return half4(normal, 1.0); // Normal visualization for testing
+                    #endif
                     
                     // Calculate curvature using the second derivative (Laplacian) of the depth
                     float curveX = (leftLin + rightLin) - (2.0 * centerLin);
@@ -156,8 +174,6 @@ Shader "Custom/PixelPerfectBlit"
                     half4 finalColor = lerp(color, half4(0.0, 0.0, 0.0, color.a), isInnerEdge);
                     
                     return finalColor;
-                    color.rgb = depth; // Normal visualization for testing
-                    return color;
                 #endif
                 
             }

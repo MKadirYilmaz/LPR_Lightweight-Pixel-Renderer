@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
@@ -21,69 +22,73 @@ public class GlobalShaderSwapper : MonoBehaviour
     private void Start()
     {
         globalURPAsset = GraphicsSettings.currentRenderPipeline as UniversalRenderPipelineAsset;
+        SwitchToCustomShader();
     }
     
     private void OnEnable()
     {
-        ToggleCustomShader();
+        SwitchToCustomShader();
     }
-
+    
     void OnDisable()
     {
-        ToggleCustomShader();
+        SwitchToCustomShader();
+    }
+
+    private void OnApplicationQuit()
+    {
+        SwitchToCustomShader();
     }
 
     public void ToggleCustomShader()
     {
-        if (pixelArtCamera == null)
-            return;
         if (bIsCustomShader)
         {
-            pixelArtCamera.targetTexture = pbrRenderTexture;
-            blitMaterial.SetTexture("_SourceTexture", pbrRenderTexture);
-            blitMaterial.SetTexture("_MainCameraDepth", depthTexture);
-            pixelArtCamera.GetComponent<UniversalAdditionalCameraData>().SetRenderer(0);
-            
-            // Enable engine depth texture generation
-            if (globalURPAsset != null) globalURPAsset.supportsCameraDepthTexture = true;
-
-            Shader.EnableKeyword("_USE_UNITY_PBR_LIT");
-            
-            bIsCustomShader = false;
+            SwitchToPBRShader();
         }
         else
         {
-            pixelArtCamera.targetTexture = packedRenderTexture;
-            blitMaterial.SetTexture("_SourceTexture", packedRenderTexture);
-            blitMaterial.SetTexture("_MainCameraDepth", null);
-            depthTexture.Release();
-            
-            pixelArtCamera.GetComponent<UniversalAdditionalCameraData>().SetRenderer(1);
-            
-            // Disable engine depth texture generation
-            if (globalURPAsset != null) globalURPAsset.supportsCameraDepthTexture = false;
-            
-            Shader.DisableKeyword("_USE_UNITY_PBR_LIT");
-            
-            bIsCustomShader = true;
+            SwitchToCustomShader();
         }
+        // Refresh RT sizes to match current screen size after shader switch
         adaptiveResolutionHandler.ResizeRT();
     }
-    
-    [ContextMenu("Toggle System")]
-    public void ToggleSystem()
-    {
-        ToggleCustomShader();
-    }
 
-    [ContextMenu("Enable PBR Shader")]
-    public void EnablePBRShader()
+    [ContextMenu("Switch To PBR Shader")]
+    public void SwitchToPBRShader()
     {
+        if (pixelArtCamera == null)
+            return;
         Shader.EnableKeyword("_USE_UNITY_PBR_LIT");
+        
+        pixelArtCamera.targetTexture = pbrRenderTexture;
+        blitMaterial.SetTexture("_SourceTexture", pbrRenderTexture);
+        blitMaterial.SetTexture("_MainCameraDepth", depthTexture);
+        pixelArtCamera.GetComponent<UniversalAdditionalCameraData>().SetRenderer(0);
+            
+        // Enable engine depth texture generation
+        if (globalURPAsset != null) globalURPAsset.supportsCameraDepthTexture = true;
+        pixelArtCamera.GetComponent<Skybox>().enabled = false;
+        bIsCustomShader = false;
+        
     }
-    [ContextMenu("Disable PBR Shader")]
-    public void DisablePBRShader()
+    [ContextMenu("Switch To Custom Shader")]
+    public void SwitchToCustomShader()
     {
+        if (pixelArtCamera == null)
+            return;
         Shader.DisableKeyword("_USE_UNITY_PBR_LIT");
+        
+        pixelArtCamera.targetTexture = packedRenderTexture;
+        blitMaterial.SetTexture("_SourceTexture", packedRenderTexture);
+        blitMaterial.SetTexture("_MainCameraDepth", null);
+        depthTexture.Release();
+            
+        pixelArtCamera.GetComponent<UniversalAdditionalCameraData>().SetRenderer(1);
+            
+        // Disable engine depth texture generation
+        if (globalURPAsset != null) globalURPAsset.supportsCameraDepthTexture = false;
+        pixelArtCamera.GetComponent<Skybox>().enabled = true;
+        bIsCustomShader = true;
     }
 }

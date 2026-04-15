@@ -9,6 +9,7 @@ Shader "Custom/TerrainGrass"
     SubShader
     {
         Tags { "RenderType" = "Opaque" "RenderPipeline" = "UniversalPipeline"}
+        //ZWrite Off
         
         HLSLINCLUDE
             #pragma multi_compile_instancing  // GPU Instancing
@@ -65,7 +66,7 @@ Shader "Custom/TerrainGrass"
                 return OUT;
             }
 
-            half4 fragmentCalculation(Varyings IN) : SV_Target
+            half4 fragmentCalculation(Varyings IN)
             {
                 UNITY_SETUP_INSTANCE_ID(IN);
 
@@ -88,8 +89,8 @@ Shader "Custom/TerrainGrass"
         
         Pass
         {
-            Name "UniversalForward"
-            Tags { "LightMode" = "UniversalForward" }
+            Name "ExcludeFromDepthPrepass"
+            Tags { "LightMode" = "ExcludeFromDepthPrepass" }
             
             HLSLPROGRAM
 
@@ -135,8 +136,8 @@ Shader "Custom/TerrainGrass"
 
         Pass
         {
-            Name "KadirPackedPass"
-            Tags { "LightMode" = "KadirPackedPass" }
+            Name "PackedRenderingPass"
+            Tags { "LightMode" = "PackedRenderingPass" }
             
             HLSLPROGRAM
             #pragma vertex vert

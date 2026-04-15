@@ -68,3 +68,9 @@ float4 UnpackRGBA(uint packedData, out uint outlineFlag)
     
     return rgba;
 }
+
+float UnpackDepth(uint packedData)
+{
+    uint d = (packedData >> SHIFT_D) & MAX_D;
+    return (float)d / (float)MAX_D;
+}

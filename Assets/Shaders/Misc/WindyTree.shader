@@ -173,8 +173,8 @@ Shader "Custom/WindyTree"
 
         Pass
         {
-            Name "KadirPackedPass"
-            Tags { "LightMode" = "KadirPackedPass" }
+            Name "PackedRenderingPass"
+            Tags { "LightMode" = "PackedRenderingPass" }
             
             HLSLPROGRAM
 

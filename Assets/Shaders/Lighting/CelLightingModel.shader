@@ -101,8 +101,8 @@ Shader "Custom/CelLightingModel"
         
         Pass
         {
-            Name "KadirPackedPass"
-            Tags { "LightMode" = "KadirPackedPass" }
+            Name "PackedRenderingPass"
+            Tags { "LightMode" = "PackedRenderingPass" }
             
             HLSLPROGRAM
             #pragma vertex vert
