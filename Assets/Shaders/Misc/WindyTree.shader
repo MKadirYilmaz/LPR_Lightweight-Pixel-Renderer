@@ -25,10 +25,7 @@ Shader "Custom/WindyTree"
             "RenderType" = "TransparentCutout"
             "RenderPipeline" = "UniversalPipeline"
             "Queue" = "AlphaTest"
-            "IgnoreProjector" = "True"
-            "DisableBatching" = "True"
         }
-        Cull Off
 
         HLSLINCLUDE
             #pragma multi_compile_instancing
@@ -46,6 +43,7 @@ Shader "Custom/WindyTree"
                 float2 uv         : TEXCOORD0;
                 float4 vertexColor : COLOR;
                 float3 normalOS   : NORMAL;
+                UNITY_VERTEX_INPUT_INSTANCE_ID
             };
 
             struct Varyings
@@ -53,26 +51,24 @@ Shader "Custom/WindyTree"
                 float4 positionHCS : SV_POSITION;
                 float2 uv          : TEXCOORD0;
                 float3 normalWS    : TEXCOORD1; 
-                float3 worldPos    : TEXCOORD2;
-                float zEye         : TEXCOORD3;
+                float4 worldPos    : TEXCOORD2;
+                UNITY_VERTEX_INPUT_INSTANCE_ID
             };
+            
+            float4 _MainTexture_ST;
+            float4 _ColorTint;
+            float  _Cutoff;
 
-            CBUFFER_START(UnityPerMaterial)
-                float4 _MainTexture_ST;
-                float4 _ColorTint;
-                float  _Cutoff;
+            float4 _Emission_ST;
+            float4 _EmissionColor;
 
-                float4 _Emission_ST;
-                float4 _EmissionColor;
+            float  _Big_WindSpeed;
+            float  _Big_WindAmount;
+            float  _Big_Frequency;
 
-                float  _Big_WindSpeed;
-                float  _Big_WindAmount;
-                float  _Big_Frequency;
-
-                float  _Small_WindSpeed;
-                float  _Small_WindAmount;
-                float  _Small_Frequency;
-            CBUFFER_END
+            float  _Small_WindSpeed;
+            float  _Small_WindAmount;
+            float  _Small_Frequency;
 
             TEXTURE2D(_MainTexture);       SAMPLER(sampler_MainTexture);
             TEXTURE2D(_Emission);          SAMPLER(sampler_Emission);
@@ -80,6 +76,9 @@ Shader "Custom/WindyTree"
             Varyings vert(Attributes IN)
             {
                 Varyings OUT;
+                
+                UNITY_SETUP_INSTANCE_ID(IN); 
+                UNITY_TRANSFER_INSTANCE_ID(IN, OUT);
                 
                 float offset = VertexColorWindOffset(IN.positionOS, IN.vertexColor, half3(_Small_WindSpeed, _Small_WindAmount, _Small_Frequency), 
                     half3(_Big_WindSpeed, _Big_WindAmount, _Big_Frequency));
@@ -90,10 +89,10 @@ Shader "Custom/WindyTree"
                 OUT.uv = IN.uv;
                 
                 OUT.normalWS = TransformObjectToWorldNormal(IN.normalOS);
-                OUT.worldPos = TransformObjectToWorld(IN.positionOS.xyz);
+                OUT.worldPos.xyz = TransformObjectToWorld(IN.positionOS.xyz);
                 
                 VertexPositionInputs vertexInputs = GetVertexPositionInputs(IN.positionOS.xyz);
-                OUT.zEye = -vertexInputs.positionVS.z;
+                OUT.worldPos.w = -vertexInputs.positionVS.z;
                 
                 return OUT;
             }
@@ -110,12 +109,12 @@ Shader "Custom/WindyTree"
                 float4 emission = SAMPLE_TEXTURE2D(_Emission, sampler_Emission, uvEmission);
 
                 float4 finalColor = mainTex * _ColorTint + emission * _EmissionColor;
-                float4 shadowCoord = TransformWorldToShadowCoord(IN.worldPos);
+                float4 shadowCoord = TransformWorldToShadowCoord(IN.worldPos.xyz);
                 
                 half3 diffuse = CelLighting(IN.normalWS, UNITY_MATRIX_M._m03_m13_m23, 
-                    IN.worldPos, GetMainLight(shadowCoord));
+                    IN.worldPos.xyz, GetMainLight(shadowCoord));
                 finalColor.rgb *= diffuse;
-                finalColor.a = GetDepthValue(IN.zEye, _ProjectionParams.y, _ProjectionParams.z);
+                finalColor.a = GetDepthValue(IN.worldPos.w, _ProjectionParams.y, _ProjectionParams.z);
                 return finalColor;
             }
         ENDHLSL
@@ -133,6 +132,7 @@ Shader "Custom/WindyTree"
 
             half4 frag(Varyings IN) : SV_Target
             {
+                UNITY_SETUP_INSTANCE_ID(IN);
                 #if defined(_USE_UNITY_PBR_LIT)
                     
                     SurfaceData surfaceData = (SurfaceData)0;
@@ -155,10 +155,10 @@ Shader "Custom/WindyTree"
                     surfaceData.occlusion = 1;
                 
                     InputData inputData = (InputData)0;
-                    inputData.positionWS = IN.worldPos;
+                    inputData.positionWS = IN.worldPos.xyz;
                     inputData.normalWS = normalize(IN.normalWS);
-                    inputData.viewDirectionWS = GetWorldSpaceNormalizeViewDir(IN.worldPos);
-                    inputData.shadowCoord = TransformWorldToShadowCoord(IN.worldPos);
+                    inputData.viewDirectionWS = GetWorldSpaceNormalizeViewDir(IN.worldPos.xyz);
+                    inputData.shadowCoord = TransformWorldToShadowCoord(IN.worldPos.xyz);
                     inputData.bakedGI = half3(0, 0, 0);
                     inputData.normalizedScreenSpaceUV = 0;
                     inputData.shadowMask = half4(1, 1, 1, 1);
@@ -183,6 +183,7 @@ Shader "Custom/WindyTree"
 
             uint frag(Varyings IN) : SV_Target
             {
+                UNITY_SETUP_INSTANCE_ID(IN);
                 half4 finalColor = fragmentCalculation(IN);
                 return PackRGBA(finalColor, 1);
             }
@@ -214,16 +215,23 @@ Shader "Custom/WindyTree"
                 float4 positionOS : POSITION;
                 float3 normalOS   : NORMAL;
                 float4 vertexColor : COLOR;
+                float2 uv         : TEXCOORD0;
+                UNITY_VERTEX_INPUT_INSTANCE_ID
             };
 
             struct VaryingsShadow {
                 float4 positionHCS : SV_POSITION;
+                float2 uv          : TEXCOORD0;
+                UNITY_VERTEX_INPUT_INSTANCE_ID
             };
             
             float3 _LightDirection;
 
             VaryingsShadow vertShadow(AttributesShadow IN) {
                 VaryingsShadow OUT;
+                
+                UNITY_SETUP_INSTANCE_ID(IN);
+                UNITY_TRANSFER_INSTANCE_ID(IN, OUT);
 
                 float offset = VertexColorWindOffset(IN.positionOS, IN.vertexColor, half3(_Small_WindSpeed, _Small_WindAmount, _Small_Frequency), 
                     half3(_Big_WindSpeed, _Big_WindAmount, _Big_Frequency));
@@ -237,7 +245,7 @@ Shader "Custom/WindyTree"
                 OUT.positionHCS = TransformWorldToHClip(
                     ApplyShadowBias(positionWS, normalWS, _LightDirection)
                 );
-
+                OUT.uv = IN.uv;
                 // Depth clamp
                 #if UNITY_REVERSED_Z
                     OUT.positionHCS.z = min(OUT.positionHCS.z, OUT.positionHCS.w * UNITY_NEAR_CLIP_VALUE);
@@ -249,6 +257,11 @@ Shader "Custom/WindyTree"
             }
 
             half4 fragShadow(VaryingsShadow IN) : SV_Target {
+                UNITY_SETUP_INSTANCE_ID(IN);
+                float2 uvMain = IN.uv * _MainTexture_ST.xy + _MainTexture_ST.zw;
+                float alpha = SAMPLE_TEXTURE2D(_MainTexture, sampler_MainTexture, uvMain).a;
+                clip(alpha - _Cutoff);
+                
                 return 0;
             }
 

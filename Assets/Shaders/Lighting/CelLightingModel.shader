@@ -16,27 +16,30 @@ Shader "Custom/CelLightingModel"
         #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
         #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
         
-        half _ShadowLight;
+        CBUFFER_START(UnityPerMaterial)
+            half _ShadowLight;
+            float4 _BaseMap_ST;
+        CBUFFER_END
+        
         #define SHADOW_LIGHT _ShadowLight
         #include "Assets/Shaders/Lighting/CustomLighting.hlsl"
         #include "Assets/Shaders/Style/PixelArt/DepthCalculations.hlsl"
 
         struct Attributes { float4 positionOS : POSITION; float2 uv : TEXCOORD0; float3 normalOS : NORMAL; };
-        struct Varyings { float4 positionHCS : SV_POSITION; float2 uv : TEXCOORD0; float3 normalWS : NORMAL; float3 worldPos : TEXCOORD1; float zEye : TEXCOORD2; };
+        struct Varyings { float4 positionHCS : SV_POSITION; float3 normalWS : NORMAL; float2 uv : TEXCOORD0; float4 worldPos : TEXCOORD1; };
 
         TEXTURE2D(_BaseMap);
         SAMPLER(sampler_BaseMap);
-        float4 _BaseMap_ST;
 
         Varyings vert(Attributes IN)
         {
             Varyings OUT;
             OUT.positionHCS = TransformObjectToHClip(IN.positionOS.xyz);
             OUT.normalWS = TransformObjectToWorldNormal(IN.normalOS);
-            OUT.worldPos = TransformObjectToWorld(IN.positionOS.xyz);
+            OUT.worldPos.xyz = TransformObjectToWorld(IN.positionOS.xyz);
             OUT.uv = TRANSFORM_TEX(IN.uv, _BaseMap);
             VertexPositionInputs vertexInputs = GetVertexPositionInputs(IN.positionOS.xyz);
-            OUT.zEye = -vertexInputs.positionVS.z;
+            OUT.worldPos.w = -vertexInputs.positionVS.z;
             return OUT;
         }
         
@@ -46,13 +49,12 @@ Shader "Custom/CelLightingModel"
             
             float3 normal = IN.normalWS;
             float3 objectWorldPos = UNITY_MATRIX_M._m03_m13_m23;
-            float3 fragPos = IN.worldPos;
-            float4 shadowCoord = TransformWorldToShadowCoord(IN.worldPos);
+            float3 fragPos = IN.worldPos.xyz;
+            float4 shadowCoord = TransformWorldToShadowCoord(IN.worldPos.xyz);
             
             half3 diffuse = CelLighting(normal, objectWorldPos, fragPos, GetMainLight(shadowCoord));
             color.rgb *= diffuse;
-            color.a = GetDepthValue(IN.zEye, _ProjectionParams.y, _ProjectionParams.z);
-            
+            color.a = GetDepthValue(IN.worldPos.w, _ProjectionParams.y, _ProjectionParams.z);
             return color;
         }
         ENDHLSL
@@ -82,10 +84,10 @@ Shader "Custom/CelLightingModel"
                     surfaceData.occlusion = 1;
                 
                     InputData inputData = (InputData)0;
-                    inputData.positionWS = IN.worldPos;
+                    inputData.positionWS = IN.worldPos.xyz;
                     inputData.normalWS = normalize(IN.normalWS);
-                    inputData.viewDirectionWS = GetWorldSpaceNormalizeViewDir(IN.worldPos);
-                    inputData.shadowCoord = TransformWorldToShadowCoord(IN.worldPos);
+                    inputData.viewDirectionWS = GetWorldSpaceNormalizeViewDir(IN.worldPos.xyz);
+                    inputData.shadowCoord = TransformWorldToShadowCoord(IN.worldPos.xyz);
                     inputData.bakedGI = half3(0, 0, 0);
                     inputData.normalizedScreenSpaceUV = 0;
                     inputData.shadowMask = half4(1, 1, 1, 1);
