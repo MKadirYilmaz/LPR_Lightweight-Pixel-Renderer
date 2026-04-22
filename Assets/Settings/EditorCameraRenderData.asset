@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b72eccb6d2a8d5c46b85d26eac7bf400, type: 3}
   m_Name: CatchDepthFeature
   m_EditorClassIdentifier: Assembly-CSharp::CatchDepthFeature
-  m_Active: 1
+  m_Active: 0
   depthCatcherMaterial: {fileID: 2100000, guid: 6ed7c22edcb45714294d60a2cb1fc86d, type: 2}
   targetTexture: {fileID: 8400000, guid: 985620b457c226442872ad5fb06ad5f3, type: 2}
 --- !u!114 &-7570632262965382012
@@ -128,10 +128,11 @@ MonoBehaviour:
   - {fileID: -8710832075087448268}
   - {fileID: -7570632262965382012}
   - {fileID: -7198037726122288819}
-  m_RendererFeatureMap: 3477553261e81c878434d65811b6ef964dd99e2ed36e1b9c
+  - {fileID: 1795163118473076549}
+  m_RendererFeatureMap: 3477553261e81c878434d65811b6ef964dd99e2ed36e1b9c455f785658b3e918
   m_UseNativeRenderPass: 0
   xrSystemData: {fileID: 0}
-  postProcessData: {fileID: 0}
+  postProcessData: {fileID: 11400000, guid: 4f67cd44c9ec3e144aa0f6010000ef0b, type: 2}
   m_AssetVersion: 3
   m_PrepassLayerMask:
     serializedVersion: 2
@@ -154,6 +155,26 @@ MonoBehaviour:
   m_DepthPrimingMode: 0
   m_CopyDepthMode: 0
   m_DepthAttachmentFormat: 0
-  m_DepthTextureFormat: 0
+  m_DepthTextureFormat: 90
   m_AccurateGbufferNormals: 0
   m_IntermediateTextureMode: 1
+--- !u!114 &1795163118473076549
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b00045f12942b46c698459096c89274e, type: 3}
+  m_Name: FullScreenPassRendererFeature
+  m_EditorClassIdentifier: Unity.RenderPipelines.Universal.Runtime::UnityEngine.Rendering.Universal.FullScreenPassRendererFeature
+  m_Active: 1
+  injectionPoint: 550
+  fetchColorBuffer: 1
+  requirements: 0
+  passMaterial: {fileID: 2100000, guid: b4a369dc78a9bc74e8edd7835640efba, type: 2}
+  passIndex: 0
+  bindDepthStencilAttachment: 0
+  m_Version: 1

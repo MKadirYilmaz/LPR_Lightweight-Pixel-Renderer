@@ -6,6 +6,9 @@ using UnityEngine.Rendering.Universal;
 public class GlobalShaderSwapper : MonoBehaviour
 {
     [SerializeField] private Camera pixelArtCamera;
+    [SerializeField] private Camera blitCamera;
+    [SerializeField] private Camera fullResolutionCamera;
+    
     [SerializeField] private Material blitMaterial;
     
     [SerializeField] private RenderTexture packedRenderTexture;
@@ -13,31 +16,37 @@ public class GlobalShaderSwapper : MonoBehaviour
     [SerializeField] private RenderTexture depthTexture;
     
     [SerializeField] private AdaptiveResolutionHandler adaptiveResolutionHandler;
+    [SerializeField] private UniversalRendererData defualtRendererData;
     
-    private UniversalRenderPipelineAsset globalURPAsset;
-    
-    
+    [SerializeField] private UniversalRenderPipelineAsset globalURPAsset;
+
+    private bool bIsDownscaling = false;
     private bool bIsCustomShader = true;
 
     private void Start()
     {
-        globalURPAsset = GraphicsSettings.currentRenderPipeline as UniversalRenderPipelineAsset;
+        if(globalURPAsset == null)
+            globalURPAsset = GraphicsSettings.currentRenderPipeline as UniversalRenderPipelineAsset;
         SwitchToCustomShader();
+        SwitchToUpscaling();
     }
     
     private void OnEnable()
     {
         SwitchToCustomShader();
+        SwitchToUpscaling();
     }
     
     void OnDisable()
     {
         SwitchToCustomShader();
+        SwitchToUpscaling();
     }
 
     private void OnApplicationQuit()
     {
         SwitchToCustomShader();
+        SwitchToUpscaling();
     }
 
     public void ToggleCustomShader()
@@ -54,41 +63,108 @@ public class GlobalShaderSwapper : MonoBehaviour
         adaptiveResolutionHandler.ResizeRT();
     }
 
+    public void ToggleSamplingType()
+    {
+        if(bIsDownscaling)
+            SwitchToUpscaling();
+        else
+            SwitchToDownscaling();
+    }
+
     [ContextMenu("Switch To PBR Shader")]
     public void SwitchToPBRShader()
     {
-        if (pixelArtCamera == null)
-            return;
-        Shader.EnableKeyword("_USE_UNITY_PBR_LIT");
+        if (bIsDownscaling)
+        {
+            Shader.EnableKeyword("_USE_UNITY_PBR_LIT");
+            bIsCustomShader = false;
+        }
+        else
+        {
+            if (pixelArtCamera == null)
+                return;
+            Shader.EnableKeyword("_USE_UNITY_PBR_LIT");
         
-        pixelArtCamera.targetTexture = pbrRenderTexture;
-        blitMaterial.SetTexture("_SourceTexture", pbrRenderTexture);
-        blitMaterial.SetTexture("_MainCameraDepth", depthTexture);
-        pixelArtCamera.GetComponent<UniversalAdditionalCameraData>().SetRenderer(0);
+            pixelArtCamera.targetTexture = pbrRenderTexture;
+            blitMaterial.SetTexture("_SourceTexture", pbrRenderTexture);
+            blitMaterial.SetTexture("_MainCameraDepth", depthTexture);
+            pixelArtCamera.GetComponent<UniversalAdditionalCameraData>().SetRenderer(0);
             
-        // Enable engine depth texture generation
-        if (globalURPAsset != null) globalURPAsset.supportsCameraDepthTexture = true;
-        pixelArtCamera.GetComponent<Skybox>().enabled = false;
-        bIsCustomShader = false;
-        
+            // Enable engine depth texture generation
+            if (globalURPAsset != null) globalURPAsset.supportsCameraDepthTexture = true;
+            pixelArtCamera.GetComponent<Skybox>().enabled = false;
+            bIsCustomShader = false;
+        }
     }
     [ContextMenu("Switch To Custom Shader")]
     public void SwitchToCustomShader()
     {
-        if (pixelArtCamera == null)
-            return;
-        Shader.DisableKeyword("_USE_UNITY_PBR_LIT");
+        if (bIsDownscaling)
+        {
+            Shader.DisableKeyword("_USE_UNITY_PBR_LIT");
+            bIsCustomShader = true;
+        }
+        else
+        {
+            if (pixelArtCamera == null)
+                return;
+            Shader.DisableKeyword("_USE_UNITY_PBR_LIT");
         
-        pixelArtCamera.targetTexture = packedRenderTexture;
-        blitMaterial.SetTexture("_SourceTexture", packedRenderTexture);
-        blitMaterial.SetTexture("_MainCameraDepth", null);
-        depthTexture.Release();
+            pixelArtCamera.targetTexture = packedRenderTexture;
+            blitMaterial.SetTexture("_SourceTexture", packedRenderTexture);
+            blitMaterial.SetTexture("_MainCameraDepth", null);
+            depthTexture.Release();
             
-        pixelArtCamera.GetComponent<UniversalAdditionalCameraData>().SetRenderer(1);
+            pixelArtCamera.GetComponent<UniversalAdditionalCameraData>().SetRenderer(1);
             
-        // Disable engine depth texture generation
-        if (globalURPAsset != null) globalURPAsset.supportsCameraDepthTexture = false;
-        pixelArtCamera.GetComponent<Skybox>().enabled = true;
-        bIsCustomShader = true;
+            // Disable engine depth texture generation
+            if (globalURPAsset != null) globalURPAsset.supportsCameraDepthTexture = false;
+            pixelArtCamera.GetComponent<Skybox>().enabled = true;
+            bIsCustomShader = true;
+        }
     }
+
+    [ContextMenu("Switch To Downscaling")]
+    public void SwitchToDownscaling()
+    {
+        if (pixelArtCamera == null || blitCamera == null || fullResolutionCamera == null)
+        {
+            Debug.LogWarning("One or more camera references are missing. Cannot switch to downscaling.");
+            return;
+        }
+        pixelArtCamera.enabled = false;
+        blitCamera.enabled = false;
+        fullResolutionCamera.enabled = true;
+        
+        // Enable engine depth texture generation
+        if (globalURPAsset != null) globalURPAsset.supportsCameraDepthTexture = true;
+        if(defualtRendererData != null) defualtRendererData.rendererFeatures.Find(feature => feature is FullScreenPassRendererFeature)?.SetActive(true);
+        if(defualtRendererData != null) defualtRendererData.rendererFeatures.Find(feature => feature is SimpleDepthCopyFeature)?.SetActive(false);
+        bIsDownscaling = true;
+        if(bIsCustomShader)
+            SwitchToCustomShader();
+        else
+            SwitchToPBRShader();
+        
+    }
+    [ContextMenu("Switch To Upscaling")]
+    public void SwitchToUpscaling()
+    {
+        if (pixelArtCamera == null || blitCamera == null || fullResolutionCamera == null)
+        {
+            Debug.LogWarning("One or more camera references are missing. Cannot switch to upscaling.");
+            return;
+        }
+        pixelArtCamera.enabled = true;
+        blitCamera.enabled = true;
+        fullResolutionCamera.enabled = false;
+        if(defualtRendererData != null) defualtRendererData.rendererFeatures.Find(feature => feature is FullScreenPassRendererFeature)?.SetActive(false);
+        if(defualtRendererData != null) defualtRendererData.rendererFeatures.Find(feature => feature is SimpleDepthCopyFeature)?.SetActive(true);
+        bIsDownscaling = false;
+        if(bIsCustomShader)
+            SwitchToCustomShader();
+        else
+            SwitchToPBRShader();
+    }
+    
 }

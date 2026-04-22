@@ -9,6 +9,8 @@ public class AdaptiveResolutionHandler : MonoBehaviour
     [SerializeField] private float resolutionScale = 0.15f;
     [SerializeField] private RenderTexture depthTexture;
     [SerializeField] private Slider resolutionSlider;
+    
+    [SerializeField] private Material fullscreenPassMaterial;
 
     private int lastScreenWidth;
     private int lastScreenHeight;
@@ -57,6 +59,7 @@ public class AdaptiveResolutionHandler : MonoBehaviour
     public void UpdateResolutionScale()
     {
         resolutionScale = resolutionSlider.value;
+        fullscreenPassMaterial.SetFloat("_PixelScale",  1.0f / resolutionScale);
         ResizeRT();
     }
 }

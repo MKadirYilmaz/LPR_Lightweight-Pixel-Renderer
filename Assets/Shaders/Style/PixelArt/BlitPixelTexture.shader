@@ -88,15 +88,22 @@ Shader "Custom/PixelPerfectBlit"
                     float2 texelSize = float2(1.0 / float(screenWidth), 1.0 / float(screenHeight));
                 
                     float depth = 1.0 - SAMPLE_TEXTURE2D(_MainCameraDepth, sampler_MainCameraDepth, IN.uv).r;
-                    
+                    depth = pow(depth, DEPTH_POW);
+                
                     #if defined(_RENDER_DEPTH)
                         return half4(depth, depth, depth, 1.0); // Depth visualization for testing
                     #endif
                 
-                    float depthUp     = 1.0 - SAMPLE_TEXTURE2D(_MainCameraDepth, sampler_MainCameraDepth, IN.uv + float2(0.0, texelSize.y)).r;
-                    float depthDown   = 1.0 - SAMPLE_TEXTURE2D(_MainCameraDepth, sampler_MainCameraDepth, IN.uv + float2(0.0, -texelSize.y)).r;
-                    float depthLeft   = 1.0 - SAMPLE_TEXTURE2D(_MainCameraDepth, sampler_MainCameraDepth, IN.uv + float2(-texelSize.x, 0.0)).r;
-                    float depthRight  = 1.0 - SAMPLE_TEXTURE2D(_MainCameraDepth, sampler_MainCameraDepth, IN.uv + float2(texelSize.x, 0.0)).r;
+                    
+                    float depthUp = 1.0 - SAMPLE_TEXTURE2D(_MainCameraDepth, sampler_MainCameraDepth, IN.uv + float2(0.0, texelSize.y)).r;
+                    float depthDown = 1.0 - SAMPLE_TEXTURE2D(_MainCameraDepth, sampler_MainCameraDepth, IN.uv + float2(0.0, -texelSize.y)).r;
+                    float depthLeft = 1.0 - SAMPLE_TEXTURE2D(_MainCameraDepth, sampler_MainCameraDepth, IN.uv + float2(-texelSize.x, 0.0)).r;
+                    float depthRight = 1.0 - SAMPLE_TEXTURE2D(_MainCameraDepth, sampler_MainCameraDepth, IN.uv + float2(texelSize.x, 0.0)).r;
+                
+                    depthUp     = pow(depthUp, DEPTH_POW);
+                    depthDown   = pow(depthDown, DEPTH_POW);
+                    depthLeft   = pow(depthLeft, DEPTH_POW);
+                    depthRight  = pow(depthRight, DEPTH_POW);
                 
                     #if defined(_RENDER_NORMALS)
                         // Calculate the normal using central differences
@@ -132,9 +139,9 @@ Shader "Custom/PixelPerfectBlit"
                     float4 color = UnpackRGBA(packedData, outlineFlag);
                     
                     float depth = color.a;
-                    float centerLin = pow(depth, 1.0 / DEPTH_POW);
+                    //float centerLin = pow(depth, 1.0 / DEPTH_POW);
                     #if defined(_RENDER_DEPTH)
-                        return half4(centerLin, centerLin, centerLin, 1.0); // Depth visualization for testing
+                        return half4(depth, depth, depth, 1.0); // Depth visualization for testing
                     #endif
                 
                     float depthUp    = UnpackDepth(_SourceTexture.Load(int3(pixelCoord + int2(0.0, 1.0), 0)));
@@ -142,23 +149,25 @@ Shader "Custom/PixelPerfectBlit"
                     float depthLeft  = UnpackDepth(_SourceTexture.Load(int3(pixelCoord + int2(-1.0, 0.0), 0)));
                     float depthRight = UnpackDepth(_SourceTexture.Load(int3(pixelCoord + int2(1.0, 0.0), 0)));
                     
+                    /*
                     float upLin = pow(depthUp, 1.0 / DEPTH_POW);
                     float downLin = pow(depthDown, 1.0 / DEPTH_POW);
                     float leftLin = pow(depthLeft, 1.0 / DEPTH_POW);
                     float rightLin = pow(depthRight, 1.0 / DEPTH_POW);
+                    */
                     
                     #if defined(_RENDER_NORMALS)
                         // Calculate the normal using central differences
-                        float dzdx = rightLin - leftLin;
-                        float dzdy = upLin - downLin;
+                        float dzdx = depthRight - depthLeft;
+                        float dzdy = depthUp - depthDown;
                         // We can calculate normal texture here by with no additional texture fetches, using the depth values we already have.
                         half3 normal = normalize(float3(dzdx, dzdy, 0.01));
                         return half4(normal, 1.0); // Normal visualization for testing
                     #endif
                     
                     // Calculate curvature using the second derivative (Laplacian) of the depth
-                    float curveX = (leftLin + rightLin) - (2.0 * centerLin);
-                    float curveY = (upLin + downLin) - (2.0 * centerLin);
+                    float curveX = (depthLeft + depthRight) - (2.0 * depth);
+                    float curveY = (depthUp + depthDown) - (2.0 * depth);
                     
                     // Determine if the pixel is an inner edge based on curvature thresholds
                     half isInnerEdge = 0;
@@ -167,7 +176,7 @@ Shader "Custom/PixelPerfectBlit"
                     isInnerEdge = saturate(isInnerEdge) * outlineFlag;
                     
                     half4 finalColor = lerp(color, half4(0.0, 0.0, 0.0, color.a), isInnerEdge);
-                    finalColor.rgb = ApplyFog(finalColor.rgb, centerLin);  
+                    finalColor.rgb = ApplyFog(finalColor.rgb, depth);  
                 
                     return finalColor;
                 #endif

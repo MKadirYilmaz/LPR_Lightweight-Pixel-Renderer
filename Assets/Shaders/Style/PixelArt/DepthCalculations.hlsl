@@ -1,8 +1,8 @@
+#include "Assets/Shaders/Style/ColorQuantization.hlsl"
+
 #ifndef DEPTH_POW
     #define DEPTH_POW 1.5
 #endif
-
-#include "Assets/Shaders/Style/ColorQuantization.hlsl"
 
 half GetDepthValue(float zEye, float near, float far)
 {
