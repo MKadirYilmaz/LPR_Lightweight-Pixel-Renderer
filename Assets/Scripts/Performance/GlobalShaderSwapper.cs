@@ -1,4 +1,5 @@
 using System;
+using TMPro;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
@@ -14,6 +15,9 @@ public class GlobalShaderSwapper : MonoBehaviour
     [SerializeField] private RenderTexture packedRenderTexture;
     [SerializeField] private RenderTexture pbrRenderTexture;
     [SerializeField] private RenderTexture depthTexture;
+
+    [SerializeField] private TextMeshProUGUI lightingModelText;
+    [SerializeField] private TextMeshProUGUI samplingTypeText;
     
     [SerializeField] private AdaptiveResolutionHandler adaptiveResolutionHandler;
     [SerializeField] private UniversalRendererData defualtRendererData;
@@ -77,7 +81,6 @@ public class GlobalShaderSwapper : MonoBehaviour
         if (bIsDownscaling)
         {
             Shader.EnableKeyword("_USE_UNITY_PBR_LIT");
-            bIsCustomShader = false;
         }
         else
         {
@@ -93,8 +96,10 @@ public class GlobalShaderSwapper : MonoBehaviour
             // Enable engine depth texture generation
             if (globalURPAsset != null) globalURPAsset.supportsCameraDepthTexture = true;
             pixelArtCamera.GetComponent<Skybox>().enabled = false;
-            bIsCustomShader = false;
         }
+        bIsCustomShader = false;
+        lightingModelText.text = "PBR Lighting";
+
     }
     [ContextMenu("Switch To Custom Shader")]
     public void SwitchToCustomShader()
@@ -102,7 +107,6 @@ public class GlobalShaderSwapper : MonoBehaviour
         if (bIsDownscaling)
         {
             Shader.DisableKeyword("_USE_UNITY_PBR_LIT");
-            bIsCustomShader = true;
         }
         else
         {
@@ -120,8 +124,9 @@ public class GlobalShaderSwapper : MonoBehaviour
             // Disable engine depth texture generation
             if (globalURPAsset != null) globalURPAsset.supportsCameraDepthTexture = false;
             pixelArtCamera.GetComponent<Skybox>().enabled = true;
-            bIsCustomShader = true;
         }
+        bIsCustomShader = true;
+        lightingModelText.text = "Custom Lighting";
     }
 
     [ContextMenu("Switch To Downscaling")]
@@ -141,6 +146,7 @@ public class GlobalShaderSwapper : MonoBehaviour
         if(defualtRendererData != null) defualtRendererData.rendererFeatures.Find(feature => feature is FullScreenPassRendererFeature)?.SetActive(true);
         if(defualtRendererData != null) defualtRendererData.rendererFeatures.Find(feature => feature is SimpleDepthCopyFeature)?.SetActive(false);
         bIsDownscaling = true;
+        samplingTypeText.text = "Downscaling";
         if(bIsCustomShader)
             SwitchToCustomShader();
         else
@@ -161,6 +167,7 @@ public class GlobalShaderSwapper : MonoBehaviour
         if(defualtRendererData != null) defualtRendererData.rendererFeatures.Find(feature => feature is FullScreenPassRendererFeature)?.SetActive(false);
         if(defualtRendererData != null) defualtRendererData.rendererFeatures.Find(feature => feature is SimpleDepthCopyFeature)?.SetActive(true);
         bIsDownscaling = false;
+        samplingTypeText.text = "Upscaling";
         if(bIsCustomShader)
             SwitchToCustomShader();
         else

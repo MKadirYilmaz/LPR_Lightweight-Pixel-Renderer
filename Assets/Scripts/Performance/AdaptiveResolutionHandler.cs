@@ -1,4 +1,5 @@
 using System.Collections;
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -9,6 +10,7 @@ public class AdaptiveResolutionHandler : MonoBehaviour
     [SerializeField] private float resolutionScale = 0.15f;
     [SerializeField] private RenderTexture depthTexture;
     [SerializeField] private Slider resolutionSlider;
+    [SerializeField] private TextMeshProUGUI resolutionText;
     
     [SerializeField] private Material fullscreenPassMaterial;
 
@@ -33,6 +35,8 @@ public class AdaptiveResolutionHandler : MonoBehaviour
     {
         int width  = Mathf.Max(1, Mathf.RoundToInt(Screen.width  * resolutionScale));
         int height = Mathf.Max(1, Mathf.RoundToInt(Screen.height * resolutionScale));
+        
+        resolutionText.text = $"{width}x{height}";
         
         lowResCamera.aspect = (float)width / (float)height;
         

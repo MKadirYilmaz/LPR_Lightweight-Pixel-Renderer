@@ -30,7 +30,7 @@ Material:
     m_Ints: []
     m_Floats:
     - _NormalOutlineThreshold: 0.0025
-    - _PixelScale: 1.9215686
+    - _PixelScale: 3.240742
     m_Colors:
     - _BaseColor: {r: 1, g: 1, b: 1, a: 1}
     - _OutlineColor: {r: 0, g: 0, b: 0, a: 1}

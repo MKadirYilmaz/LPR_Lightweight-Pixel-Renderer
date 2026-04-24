@@ -41,6 +41,7 @@ Shader "Custom/DownscalerPostProcess"
                 float2 pixelatedUV = (floor(uv * targetResolution) + 0.5) / targetResolution;
                 
                 half4 color = SAMPLE_TEXTURE2D_X(_BlitTexture, sampler_PointClamp, pixelatedUV);
+                color.rgb = SmartQuantize(color.rgb, 32.0, 0.3, half3(1.0, 1.0, 1.0));
                 
                 float depthCenter = SampleSceneDepth(pixelatedUV);
                 float pDepthCenter = Linear01Depth(depthCenter, _ZBufferParams);
