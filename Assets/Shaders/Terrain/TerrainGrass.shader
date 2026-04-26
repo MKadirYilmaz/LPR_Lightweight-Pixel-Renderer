@@ -74,23 +74,14 @@ Shader "Custom/TerrainGrass"
                 float2 uv = float2(diff.x / TERRAIN_SIZE.x, diff.y / TERRAIN_SIZE.y);
 
                 half4 tColor = SAMPLE_TEXTURE2D(_TerrainColorMap, sampler_TerrainColorMap, uv);
-                float4 shadowCoord = TransformWorldToShadowCoord(IN.worldPos);
-                
-                half3 diffuse = GrassLighting(GetMainLight(shadowCoord));
-                
-                tColor.rgb *= diffuse; // Apply main directional light color
-                //tColor.rgb *= IN.ambientLight; // Apply ambient light factor
-                
-                tColor.a = GetDepthValue(IN.zEye, _ProjectionParams.y, _ProjectionParams.z); // Write depth to alpha channel for proper sorting
-                
                 return tColor;
             }
         ENDHLSL
         
         Pass
         {
-            Name "ExcludeFromDepthPrepass"
-            Tags { "LightMode" = "ExcludeFromDepthPrepass" }
+            Name "LPRForward"
+            Tags { "LightMode" = "LPRForward" }
             
             HLSLPROGRAM
 
@@ -121,8 +112,8 @@ Shader "Custom/TerrainGrass"
                     inputData.normalWS = normalize(float3(0.0, 1.0, 0.0)); // Upward facing normal for grass
                     inputData.viewDirectionWS = GetWorldSpaceNormalizeViewDir(IN.worldPos);
                     inputData.shadowCoord = TransformWorldToShadowCoord(IN.worldPos);
-                    inputData.bakedGI = half3(0, 0, 0);
-                    inputData.normalizedScreenSpaceUV = 0;
+                    inputData.bakedGI = SampleSH(inputData.normalWS);
+                    inputData.normalizedScreenSpaceUV = GetNormalizedScreenSpaceUV(IN.positionHCS);
                     inputData.shadowMask = half4(1, 1, 1, 1);
                     
                     return UniversalFragmentPBR(inputData, surfaceData);
@@ -133,19 +124,21 @@ Shader "Custom/TerrainGrass"
 
             ENDHLSL
         }
-
+        
         Pass
         {
-            Name "PackedRenderingPass"
-            Tags { "LightMode" = "PackedRenderingPass" }
+            Name "LPRPackedForward"
+            Tags { "LightMode" = "LPRPackedForward" }
             
             HLSLPROGRAM
             #pragma vertex vert
-            #pragma fragment fragGame
+            #pragma fragment fragUniversal
 
-            uint fragGame(Varyings IN) : SV_Target0
+            uint fragUniversal(Varyings IN) : SV_Target0
             {
                 half4 color = fragmentCalculation(IN);
+                return PackRGBNormal(color.rgb, float3(0.0, 1.0, 0.0), 0);
+                
                 return PackRGBA(color, 0); 
             }
             ENDHLSL

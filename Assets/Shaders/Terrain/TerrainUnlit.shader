@@ -83,12 +83,6 @@ Shader "Terrain/TerrainUnlit"
                 half4 splat3 = SAMPLE_TEXTURE2D(_Splat3, sampler_Splat3, IN.uvSplat2_3.zw);
                 
                 half4 terrainColor = control.r * splat0 + control.g * splat1 + control.b * splat2 + control.a * splat3;
-                
-                float4 shadowCoord = TransformWorldToShadowCoord(IN.worldPos);
-                half3 lighting = CelLighting(IN.normalWS, UNITY_MATRIX_M._m03_m13_m23, 
-                    IN.worldPos.xyz, GetMainLight(shadowCoord));
-                terrainColor.rgb *= lighting;
-                terrainColor.a = GetDepthValue(IN.worldPos.w, _ProjectionParams.y, _ProjectionParams.z);
                 return terrainColor;
             }
         
@@ -96,8 +90,8 @@ Shader "Terrain/TerrainUnlit"
 
         Pass
         {
-            Name "UniversalForward"
-            Tags { "LightMode" = "UniversalForward" }
+            Name "LPRForward"
+            Tags { "LightMode" = "LPRForward" }
             
             HLSLPROGRAM
 
@@ -130,14 +124,14 @@ Shader "Terrain/TerrainUnlit"
                     surfaceData.occlusion = 1;
                 
                     InputData inputData = (InputData)0;
-                    inputData.positionWS = IN.worldPos;
-                    inputData.normalWS = normalize(IN.normalWS);
-                    inputData.viewDirectionWS = GetWorldSpaceNormalizeViewDir(IN.worldPos);
-                    inputData.shadowCoord = TransformWorldToShadowCoord(IN.worldPos);
-                    inputData.bakedGI = half3(0, 0, 0);
-                    inputData.normalizedScreenSpaceUV = 0;
+                    inputData.positionWS = IN.worldPos.xyz;
+                    inputData.normalWS = length(IN.normalWS) > 0.001 ? normalize(IN.normalWS) : float3(0, 1, 0);
+                    inputData.viewDirectionWS = GetWorldSpaceNormalizeViewDir(IN.worldPos.xyz);
+                    inputData.shadowCoord = TransformWorldToShadowCoord(IN.worldPos.xyz);
+                    inputData.bakedGI = SampleSH(inputData.normalWS);
+                    inputData.normalizedScreenSpaceUV = GetNormalizedScreenSpaceUV(IN.positionHCS);
                     inputData.shadowMask = half4(1, 1, 1, 1);
-                    
+                
                     return UniversalFragmentPBR(inputData, surfaceData);
                 #else
                     return fragmentCalculation(IN);
@@ -145,10 +139,11 @@ Shader "Terrain/TerrainUnlit"
             }
             ENDHLSL
         }
+
         Pass
         {
-            Name "PackedRenderingPass"
-            Tags { "LightMode" = "PackedRenderingPass" }
+            Name "LPRPackedForward"
+            Tags { "LightMode" = "LPRPackedForward" }
             
             HLSLPROGRAM
 
@@ -158,11 +153,12 @@ Shader "Terrain/TerrainUnlit"
             uint frag(Varyings IN) : SV_Target
             {
                 half4 terrainColor = fragmentCalculation(IN);
-                
-                return PackRGBA(terrainColor, 1);
+                float3 objectWorldPos = UNITY_MATRIX_M._m03_m13_m23;
+                float3 fragPos = IN.worldPos.xyz;
+                half3 modifiedNormal = NormalSpherelize(IN.normalWS, objectWorldPos, fragPos);
+                return PackRGBNormal(terrainColor.rgb, modifiedNormal, 1);
             }
             ENDHLSL
         }
-
     }
 }

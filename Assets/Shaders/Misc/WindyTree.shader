@@ -30,6 +30,7 @@ Shader "Custom/WindyTree"
         HLSLINCLUDE
             #pragma multi_compile_instancing
             #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE
+            
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
             #include "Assets/Shaders/Lighting/CustomLighting.hlsl"
@@ -54,7 +55,7 @@ Shader "Custom/WindyTree"
                 float4 worldPos    : TEXCOORD2;
                 UNITY_VERTEX_INPUT_INSTANCE_ID
             };
-            
+            CBUFFER_START(UnityPerMaterial)
             float4 _MainTexture_ST;
             float4 _ColorTint;
             float  _Cutoff;
@@ -69,6 +70,7 @@ Shader "Custom/WindyTree"
             float  _Small_WindSpeed;
             float  _Small_WindAmount;
             float  _Small_Frequency;
+            CBUFFER_END
 
             TEXTURE2D(_MainTexture);       SAMPLER(sampler_MainTexture);
             TEXTURE2D(_Emission);          SAMPLER(sampler_Emission);
@@ -109,20 +111,14 @@ Shader "Custom/WindyTree"
                 float4 emission = SAMPLE_TEXTURE2D(_Emission, sampler_Emission, uvEmission);
 
                 float4 finalColor = mainTex * _ColorTint + emission * _EmissionColor;
-                float4 shadowCoord = TransformWorldToShadowCoord(IN.worldPos.xyz);
-                
-                half3 diffuse = CelLighting(IN.normalWS, UNITY_MATRIX_M._m03_m13_m23, 
-                    IN.worldPos.xyz, GetMainLight(shadowCoord));
-                finalColor.rgb *= diffuse;
-                finalColor.a = GetDepthValue(IN.worldPos.w, _ProjectionParams.y, _ProjectionParams.z);
                 return finalColor;
             }
         ENDHLSL
         
         Pass
         {
-            Name "UniversalForward"
-            Tags { "LightMode" = "UniversalForward" }
+            Name "LPRForward"
+            Tags { "LightMode" = "LPRForward" }
             
             HLSLPROGRAM
 
@@ -159,8 +155,8 @@ Shader "Custom/WindyTree"
                     inputData.normalWS = normalize(IN.normalWS);
                     inputData.viewDirectionWS = GetWorldSpaceNormalizeViewDir(IN.worldPos.xyz);
                     inputData.shadowCoord = TransformWorldToShadowCoord(IN.worldPos.xyz);
-                    inputData.bakedGI = half3(0, 0, 0);
-                    inputData.normalizedScreenSpaceUV = 0;
+                    inputData.bakedGI = SampleSH(inputData.normalWS);
+                    inputData.normalizedScreenSpaceUV = GetNormalizedScreenSpaceUV(IN.positionHCS);
                     inputData.shadowMask = half4(1, 1, 1, 1);
                     
                     return UniversalFragmentPBR(inputData, surfaceData);
@@ -173,8 +169,8 @@ Shader "Custom/WindyTree"
 
         Pass
         {
-            Name "PackedRenderingPass"
-            Tags { "LightMode" = "PackedRenderingPass" }
+            Name "LPRPackedForward"
+            Tags { "LightMode" = "LPRPackedForward" }
             
             HLSLPROGRAM
 
@@ -185,6 +181,11 @@ Shader "Custom/WindyTree"
             {
                 UNITY_SETUP_INSTANCE_ID(IN);
                 half4 finalColor = fragmentCalculation(IN);
+                float3 objectWorldPos = UNITY_MATRIX_M._m03_m13_m23;
+                float3 fragPos = IN.worldPos.xyz;
+                half3 modifiedNormal = NormalSpherelize(IN.normalWS, objectWorldPos, fragPos);
+                return PackRGBNormal(finalColor.rgb, modifiedNormal, 1);
+                
                 return PackRGBA(finalColor, 1);
             }
             ENDHLSL

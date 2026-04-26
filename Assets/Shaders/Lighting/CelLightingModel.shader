@@ -46,23 +46,14 @@ Shader "Custom/CelLightingModel"
         half4 CalculateSurfaceColor(Varyings IN)
         {
             half4 color = SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, IN.uv);
-            
-            float3 normal = IN.normalWS;
-            float3 objectWorldPos = UNITY_MATRIX_M._m03_m13_m23;
-            float3 fragPos = IN.worldPos.xyz;
-            float4 shadowCoord = TransformWorldToShadowCoord(IN.worldPos.xyz);
-            
-            half3 diffuse = CelLighting(normal, objectWorldPos, fragPos, GetMainLight(shadowCoord));
-            color.rgb *= diffuse;
-            color.a = GetDepthValue(IN.worldPos.w, _ProjectionParams.y, _ProjectionParams.z);
             return color;
         }
         ENDHLSL
         
         Pass
         {
-            Name "UniversalForward"
-            Tags { "LightMode" = "UniversalForward" }
+            Name "LPRForward"
+            Tags { "LightMode" = "LPRForward" }
             
             HLSLPROGRAM
             #pragma vertex vert
@@ -88,8 +79,8 @@ Shader "Custom/CelLightingModel"
                     inputData.normalWS = normalize(IN.normalWS);
                     inputData.viewDirectionWS = GetWorldSpaceNormalizeViewDir(IN.worldPos.xyz);
                     inputData.shadowCoord = TransformWorldToShadowCoord(IN.worldPos.xyz);
-                    inputData.bakedGI = half3(0, 0, 0);
-                    inputData.normalizedScreenSpaceUV = 0;
+                    inputData.bakedGI = SampleSH(inputData.normalWS);
+                    inputData.normalizedScreenSpaceUV = GetNormalizedScreenSpaceUV(IN.positionHCS);
                     inputData.shadowMask = half4(1, 1, 1, 1);
                 
                     return UniversalFragmentPBR(inputData, surfaceData);
@@ -100,21 +91,23 @@ Shader "Custom/CelLightingModel"
             }
             ENDHLSL
         }
-        
+
         Pass
         {
-            Name "PackedRenderingPass"
-            Tags { "LightMode" = "PackedRenderingPass" }
+            Name "LPRPackedForward"
+            Tags { "LightMode" = "LPRPackedForward" }
             
             HLSLPROGRAM
             #pragma vertex vert
-            #pragma fragment fragGame
+            #pragma fragment fragUniversal
 
-            uint fragGame(Varyings IN) : SV_Target0
+            uint fragUniversal(Varyings IN) : SV_Target0
             {
                 half4 color = CalculateSurfaceColor(IN);
-                
-                return PackRGBA(color, 1); 
+                float3 objectWorldPos = UNITY_MATRIX_M._m03_m13_m23;
+                float3 fragPos = IN.worldPos.xyz;
+                half3 modifiedNormal = NormalSpherelize(IN.normalWS, objectWorldPos, fragPos);
+                return PackRGBNormal(color.rgb, modifiedNormal, 1);
             }
             ENDHLSL
         }

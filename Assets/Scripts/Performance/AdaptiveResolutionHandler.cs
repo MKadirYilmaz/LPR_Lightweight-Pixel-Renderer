@@ -5,14 +5,11 @@ using UnityEngine.UI;
 
 public class AdaptiveResolutionHandler : MonoBehaviour
 {
-    [SerializeField] private Camera lowResCamera;
+    [SerializeField] private Camera mainCamera;
     [Range(0.01f, 1.0f)]
-    [SerializeField] private float resolutionScale = 0.15f;
-    [SerializeField] private RenderTexture depthTexture;
+    [SerializeField] private float resolutionScale = 0.3125f;
     [SerializeField] private Slider resolutionSlider;
     [SerializeField] private TextMeshProUGUI resolutionText;
-    
-    [SerializeField] private Material fullscreenPassMaterial;
 
     private int lastScreenWidth;
     private int lastScreenHeight;
@@ -38,21 +35,7 @@ public class AdaptiveResolutionHandler : MonoBehaviour
         
         resolutionText.text = $"{width}x{height}";
         
-        lowResCamera.aspect = (float)width / (float)height;
-        
-        RenderTexture rt = lowResCamera.targetTexture;
-        
-        rt.Release();
-        rt.width  = width;
-        rt.height = height;
-        rt.Create();
-        
-        depthTexture.Release();
-        depthTexture.width  = width;
-        depthTexture.height  = height;
-        depthTexture.Create();
-        
-        lowResCamera.targetTexture = rt;
+        mainCamera.aspect = (float)width / (float)height;
 
         lastScreenWidth  = Screen.width;
         lastScreenHeight = Screen.height;
@@ -63,7 +46,6 @@ public class AdaptiveResolutionHandler : MonoBehaviour
     public void UpdateResolutionScale()
     {
         resolutionScale = resolutionSlider.value;
-        fullscreenPassMaterial.SetFloat("_PixelScale",  1.0f / resolutionScale);
         ResizeRT();
     }
 }
