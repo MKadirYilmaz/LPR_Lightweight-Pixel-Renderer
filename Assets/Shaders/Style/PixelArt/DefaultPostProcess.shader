@@ -16,7 +16,6 @@ Shader "Custom/DefaultPostProcess"
 
             #pragma vertex vert
             #pragma fragment frag
-            #pragma multi_compile _ _USE_UNITY_PBR_LIT
             #pragma multi_compile _ _RENDER_NORMALS _RENDER_DEPTH
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"

@@ -12,6 +12,8 @@ Shader "Custom/CelLightingModel"
 
         HLSLINCLUDE
         #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE
+        #pragma multi_compile _ _DEFERRED_SHADING
+        #pragma multi_compile _ _CUSTOM_LIGHTING
         
         #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
         #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
@@ -43,10 +45,40 @@ Shader "Custom/CelLightingModel"
             return OUT;
         }
         
-        half4 CalculateSurfaceColor(Varyings IN)
+        half4 ForwardSurfaceLighting(Varyings IN)
         {
-            half4 color = SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, IN.uv);
-            return color;
+            #if defined(_CUSTOM_LIGHTING)
+                half4 color = SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, IN.uv);
+                float3 objectWorldPos = UNITY_MATRIX_M._m03_m13_m23;
+                float3 fragPos = IN.worldPos.xyz;
+                
+                half3 modifiedNormal = NormalSpherelize(IN.normalWS, objectWorldPos, fragPos);
+                
+                float4 shadowCoord = TransformWorldToShadowCoord(fragPos);
+                Light light = GetMainLight(shadowCoord);
+            
+                return half4(color.rgb * CelLighting(modifiedNormal, light), color.a);
+            #else
+                SurfaceData surfaceData = (SurfaceData)0;
+                half4 texColor = SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, IN.uv);
+                surfaceData.albedo = texColor.rgb;
+                surfaceData.alpha = texColor.a;
+                surfaceData.metallic = 0.0;     
+                surfaceData.smoothness = 0.0;   
+                surfaceData.normalTS = float3(0, 0, 1);
+                surfaceData.emission = 0;
+                surfaceData.occlusion = 1;
+            
+                InputData inputData = (InputData)0;
+                inputData.positionWS = IN.worldPos.xyz;
+                inputData.normalWS = normalize(IN.normalWS);
+                inputData.viewDirectionWS = GetWorldSpaceNormalizeViewDir(IN.worldPos.xyz);
+                inputData.shadowCoord = TransformWorldToShadowCoord(IN.worldPos.xyz);
+                inputData.bakedGI = SampleSH(inputData.normalWS);
+                inputData.shadowMask = half4(1, 1, 1, 1);
+            
+                return UniversalFragmentPBR(inputData, surfaceData);
+            #endif
         }
         ENDHLSL
         
@@ -57,53 +89,63 @@ Shader "Custom/CelLightingModel"
             
             HLSLPROGRAM
             #pragma vertex vert
-            #pragma fragment fragEditor
-            #pragma multi_compile _ _USE_UNITY_PBR_LIT
+            #pragma fragment frag
 
-            half4 fragEditor(Varyings IN) : SV_Target
+            half4 frag(Varyings IN) : SV_Target
             {
-                #if defined(_USE_UNITY_PBR_LIT)
-                    
-                    SurfaceData surfaceData = (SurfaceData)0;
-                    half4 texColor = SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, IN.uv);
-                    surfaceData.albedo = texColor.rgb;
-                    surfaceData.alpha = texColor.a;
-                    surfaceData.metallic = 0.0;     
-                    surfaceData.smoothness = 0.0;   
-                    surfaceData.normalTS = float3(0, 0, 1);
-                    surfaceData.emission = 0;
-                    surfaceData.occlusion = 1;
-                
-                    InputData inputData = (InputData)0;
-                    inputData.positionWS = IN.worldPos.xyz;
-                    inputData.normalWS = normalize(IN.normalWS);
-                    inputData.viewDirectionWS = GetWorldSpaceNormalizeViewDir(IN.worldPos.xyz);
-                    inputData.shadowCoord = TransformWorldToShadowCoord(IN.worldPos.xyz);
-                    inputData.bakedGI = SampleSH(inputData.normalWS);
-                    inputData.normalizedScreenSpaceUV = GetNormalizedScreenSpaceUV(IN.positionHCS);
-                    inputData.shadowMask = half4(1, 1, 1, 1);
-                
-                    return UniversalFragmentPBR(inputData, surfaceData);
-                #else
-                    return CalculateSurfaceColor(IN);
-                #endif
-                
+                return ForwardSurfaceLighting(IN);
             }
             ENDHLSL
         }
 
         Pass
         {
-            Name "LPRPackedForward"
-            Tags { "LightMode" = "LPRPackedForward" }
+            Name "LPRForwardPacked"
+            Tags { "LightMode" = "LPRForwardPacked" }
             
             HLSLPROGRAM
             #pragma vertex vert
-            #pragma fragment fragUniversal
+            #pragma fragment frag
 
-            uint fragUniversal(Varyings IN) : SV_Target0
+            uint frag(Varyings IN) : SV_Target
             {
-                half4 color = CalculateSurfaceColor(IN);
+                half4 color = ForwardSurfaceLighting(IN);
+                color.a = GetDepthValue(IN.worldPos.w, _ProjectionParams.y, _ProjectionParams.z);
+                return PackRGBA(color, 1);
+            }
+            ENDHLSL
+        }
+
+        Pass
+        {
+            Name "LPRDeferred"
+            Tags { "LightMode" = "LPRDeferred" }
+            HLSLPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+
+            uint frag(Varyings IN) : SV_Target0
+            {
+                half4 color = SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, IN.uv);
+                float3 objectWorldPos = UNITY_MATRIX_M._m03_m13_m23;
+                float3 fragPos = IN.worldPos.xyz;
+                half3 modifiedNormal = NormalSpherelize(IN.normalWS, objectWorldPos, fragPos);
+                return PackRGBNormal(color.rgb, modifiedNormal, 1);
+            }
+            ENDHLSL
+        }
+
+        Pass
+        {
+            Name "LPRDeferredPacked"
+            Tags { "LightMode" = "LPRDeferredPacked" }
+            HLSLPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+
+            uint frag(Varyings IN) : SV_Target0
+            {
+                half4 color = SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, IN.uv);
                 float3 objectWorldPos = UNITY_MATRIX_M._m03_m13_m23;
                 float3 fragPos = IN.worldPos.xyz;
                 half3 modifiedNormal = NormalSpherelize(IN.normalWS, objectWorldPos, fragPos);

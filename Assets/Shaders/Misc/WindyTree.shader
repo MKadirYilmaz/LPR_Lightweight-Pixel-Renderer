@@ -30,6 +30,8 @@ Shader "Custom/WindyTree"
         HLSLINCLUDE
             #pragma multi_compile_instancing
             #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE
+            #pragma multi_compile _ _DEFERRED_SHADING
+            #pragma multi_compile _ _CUSTOM_LIGHTING
             
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
@@ -99,19 +101,47 @@ Shader "Custom/WindyTree"
                 return OUT;
             }
 
-            half4 fragmentCalculation(Varyings IN)
+            half4 ForwardSurfaceLighting(Varyings IN)
             {
                 float2 uvMain = IN.uv * _MainTexture_ST.xy + _MainTexture_ST.zw;
-                float4 mainTex = SAMPLE_TEXTURE2D(_MainTexture, sampler_MainTexture, uvMain);
+                float4 color = SAMPLE_TEXTURE2D(_MainTexture, sampler_MainTexture, uvMain);
 
                 // Apply alpha cutoff
-                clip(mainTex.a - _Cutoff);
-
+                clip(color.a - _Cutoff);
+                
                 float2 uvEmission = IN.uv * _Emission_ST.xy + _Emission_ST.zw;
-                float4 emission = SAMPLE_TEXTURE2D(_Emission, sampler_Emission, uvEmission);
-
-                float4 finalColor = mainTex * _ColorTint + emission * _EmissionColor;
-                return finalColor;
+                half3 emission = SAMPLE_TEXTURE2D(_Emission, sampler_Emission, uvEmission);
+                
+                #if defined(_CUSTOM_LIGHTING)
+                    float3 objectWorldPos = UNITY_MATRIX_M._m03_m13_m23;
+                    float3 fragPos = IN.worldPos.xyz;
+                    
+                    half3 modifiedNormal = NormalSpherelize(IN.normalWS, objectWorldPos, fragPos);
+                    
+                    float4 shadowCoord = TransformWorldToShadowCoord(fragPos);
+                    Light light = GetMainLight(shadowCoord);
+                
+                    return half4(color.rgb * _ColorTint * CelLighting(modifiedNormal, light) + emission * _EmissionColor, color.a);
+                #else
+                    SurfaceData surfaceData = (SurfaceData)0;
+                    surfaceData.albedo = color.rgb;
+                    surfaceData.alpha = color.a;
+                    surfaceData.metallic = 0.0;     
+                    surfaceData.smoothness = 0.0;   
+                    surfaceData.normalTS = float3(0, 0, 1);
+                    surfaceData.emission = emission * _EmissionColor;
+                    surfaceData.occlusion = 1;
+                
+                    InputData inputData = (InputData)0;
+                    inputData.positionWS = IN.worldPos.xyz;
+                    inputData.normalWS = normalize(IN.normalWS);
+                    inputData.viewDirectionWS = GetWorldSpaceNormalizeViewDir(IN.worldPos.xyz);
+                    inputData.shadowCoord = TransformWorldToShadowCoord(IN.worldPos.xyz);
+                    inputData.bakedGI = SampleSH(inputData.normalWS);
+                    inputData.shadowMask = half4(1, 1, 1, 1);
+                
+                    return UniversalFragmentPBR(inputData, surfaceData);
+                #endif
             }
         ENDHLSL
         
@@ -121,72 +151,80 @@ Shader "Custom/WindyTree"
             Tags { "LightMode" = "LPRForward" }
             
             HLSLPROGRAM
-
             #pragma vertex vert
             #pragma fragment frag
-            #pragma multi_compile _ _USE_UNITY_PBR_LIT
 
             half4 frag(Varyings IN) : SV_Target
             {
                 UNITY_SETUP_INSTANCE_ID(IN);
-                #if defined(_USE_UNITY_PBR_LIT)
-                    
-                    SurfaceData surfaceData = (SurfaceData)0;
-                    float2 uvMain = IN.uv * _MainTexture_ST.xy + _MainTexture_ST.zw;
-                    float4 mainTex = SAMPLE_TEXTURE2D(_MainTexture, sampler_MainTexture, uvMain);
-
-                    // Apply alpha cutoff
-                    clip(mainTex.a - _Cutoff);
-
-                    float2 uvEmission = IN.uv * _Emission_ST.xy + _Emission_ST.zw;
-                    float4 emission = SAMPLE_TEXTURE2D(_Emission, sampler_Emission, uvEmission);
-
-                    float4 texColor = mainTex * _ColorTint + emission * _EmissionColor;
-                    surfaceData.albedo = texColor.rgb;
-                    surfaceData.alpha = texColor.a;
-                    surfaceData.metallic = 0.0;     
-                    surfaceData.smoothness = 0.0;   
-                    surfaceData.normalTS = float3(0, 0, 1);
-                    surfaceData.emission = 0;
-                    surfaceData.occlusion = 1;
-                
-                    InputData inputData = (InputData)0;
-                    inputData.positionWS = IN.worldPos.xyz;
-                    inputData.normalWS = normalize(IN.normalWS);
-                    inputData.viewDirectionWS = GetWorldSpaceNormalizeViewDir(IN.worldPos.xyz);
-                    inputData.shadowCoord = TransformWorldToShadowCoord(IN.worldPos.xyz);
-                    inputData.bakedGI = SampleSH(inputData.normalWS);
-                    inputData.normalizedScreenSpaceUV = GetNormalizedScreenSpaceUV(IN.positionHCS);
-                    inputData.shadowMask = half4(1, 1, 1, 1);
-                    
-                    return UniversalFragmentPBR(inputData, surfaceData);
-                #else
-                    return fragmentCalculation(IN);
-                #endif
+                return ForwardSurfaceLighting(IN);
             }
             ENDHLSL
         }
 
         Pass
         {
-            Name "LPRPackedForward"
-            Tags { "LightMode" = "LPRPackedForward" }
+            Name "LPRForwardPacked"
+            Tags { "LightMode" = "LPRForwardPacked" }
             
             HLSLPROGRAM
-
             #pragma vertex vert
             #pragma fragment frag
 
             uint frag(Varyings IN) : SV_Target
             {
                 UNITY_SETUP_INSTANCE_ID(IN);
-                half4 finalColor = fragmentCalculation(IN);
+                half4 color = ForwardSurfaceLighting(IN);
+                color.a = GetDepthValue(IN.worldPos.w, _ProjectionParams.y, _ProjectionParams.z);
+                return PackRGBA(color, 1);
+            }
+            ENDHLSL
+        }
+
+        Pass
+        {
+            Name "LPRDeferred"
+            Tags { "LightMode" = "LPRDeferred" }
+            HLSLPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+
+            uint frag(Varyings IN) : SV_Target0
+            {
+                UNITY_SETUP_INSTANCE_ID(IN);
+                float2 uvMain = IN.uv * _MainTexture_ST.xy + _MainTexture_ST.zw;
+                float4 color = SAMPLE_TEXTURE2D(_MainTexture, sampler_MainTexture, uvMain);
+                
+                clip(color.a - _Cutoff);
+                
                 float3 objectWorldPos = UNITY_MATRIX_M._m03_m13_m23;
                 float3 fragPos = IN.worldPos.xyz;
                 half3 modifiedNormal = NormalSpherelize(IN.normalWS, objectWorldPos, fragPos);
-                return PackRGBNormal(finalColor.rgb, modifiedNormal, 1);
+                return PackRGBNormal(color.rgb * _ColorTint, modifiedNormal, 1);
+            }
+            ENDHLSL
+        }
+
+        Pass
+        {
+            Name "LPRDeferredPacked"
+            Tags { "LightMode" = "LPRDeferredPacked" }
+            HLSLPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+
+            uint frag(Varyings IN) : SV_Target0
+            {
+                UNITY_SETUP_INSTANCE_ID(IN);
+                float2 uvMain = IN.uv * _MainTexture_ST.xy + _MainTexture_ST.zw;
+                float4 color = SAMPLE_TEXTURE2D(_MainTexture, sampler_MainTexture, uvMain);
                 
-                return PackRGBA(finalColor, 1);
+                clip(color.a - _Cutoff);
+                
+                float3 objectWorldPos = UNITY_MATRIX_M._m03_m13_m23;
+                float3 fragPos = IN.worldPos.xyz;
+                half3 modifiedNormal = NormalSpherelize(IN.normalWS, objectWorldPos, fragPos);
+                return PackRGBNormal(color.rgb * _ColorTint, modifiedNormal, 1);
             }
             ENDHLSL
         }

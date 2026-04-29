@@ -55,7 +55,7 @@ namespace Rendering
         class LprOpaquePass : ScriptableRenderPass
         {
             private float mScale;
-            private static readonly ShaderTagId SShaderTagId = new ShaderTagId("LPRPackedForward");
+            private static readonly ShaderTagId SShaderTagId = new ShaderTagId("LPRDeferredPacked");
 
             public LprOpaquePass(float scale)
             {
@@ -121,6 +121,7 @@ namespace Rendering
                 {
                     passData.RendererList = rendererList;
                     builder.UseRendererList(rendererList);
+                    
                     builder.SetRenderAttachment(uintTexture, 0);
                     builder.SetRenderAttachmentDepth(hardwareDepthTexture);
 

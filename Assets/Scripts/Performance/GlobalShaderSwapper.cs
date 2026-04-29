@@ -73,7 +73,7 @@ public class GlobalShaderSwapper : MonoBehaviour
     [ContextMenu("Switch To PBR Shader")]
     public void SwitchToPBRShader()
     {
-        Shader.EnableKeyword("_USE_UNITY_PBR_LIT");
+        Shader.DisableKeyword("_CUSTOM_LIGHTING");
         bIsCustomShader = false;
         lightingModelText.text = "PBR Lighting";
 
@@ -81,7 +81,7 @@ public class GlobalShaderSwapper : MonoBehaviour
     [ContextMenu("Switch To Custom Shader")]
     public void SwitchToCustomShader()
     {
-        Shader.DisableKeyword("_USE_UNITY_PBR_LIT");
+        Shader.EnableKeyword("_CUSTOM_LIGHTING");
         bIsCustomShader = true;
         lightingModelText.text = "Custom Lighting";
     }
@@ -108,6 +108,18 @@ public class GlobalShaderSwapper : MonoBehaviour
             SwitchToCustomShader();
         else
             SwitchToPBRShader();
+    }
+
+    [ContextMenu("Switch to Deferred Shading")]
+    public void SwitchToDeferredShading()
+    {
+        Shader.EnableKeyword("_DEFERRED_SHADING");
+    }
+
+    [ContextMenu("Switch to Forward Shading")]
+    public void SwitchToForwardShading()
+    {
+        Shader.DisableKeyword("_DEFERRED_SHADING");
     }
     
 }

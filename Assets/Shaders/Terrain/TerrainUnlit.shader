@@ -16,6 +16,8 @@ Shader "Terrain/TerrainUnlit"
         HLSLINCLUDE
         
             #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE
+            #pragma multi_compile _ _DEFERRED_SHADING
+            #pragma multi_compile _ _CUSTOM_LIGHTING
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
@@ -73,7 +75,7 @@ Shader "Terrain/TerrainUnlit"
                 return OUT;
             }
 
-            half4 fragmentCalculation(Varyings IN)
+            half4 TerrainColor(Varyings IN)
             {
                 half4 control = SAMPLE_TEXTURE2D(_Control, sampler_Control, IN.uvControl); // R = Splat0, G = Splat1, B = Splat2, A = Splat3
                 
@@ -85,36 +87,23 @@ Shader "Terrain/TerrainUnlit"
                 half4 terrainColor = control.r * splat0 + control.g * splat1 + control.b * splat2 + control.a * splat3;
                 return terrainColor;
             }
-        
-        ENDHLSL
-
-        Pass
-        {
-            Name "LPRForward"
-            Tags { "LightMode" = "LPRForward" }
             
-            HLSLPROGRAM
-
-            #pragma vertex vert
-            #pragma fragment frag
-            
-            #pragma multi_compile _ _USE_UNITY_PBR_LIT
-
-            half4 frag(Varyings IN) : SV_Target
+            half4 ForwardSurfaceLighting(Varyings IN)
             {
-                #if defined(_USE_UNITY_PBR_LIT)
+                #if defined(_CUSTOM_LIGHTING)
+                    half4 color = TerrainColor(IN);
+                    float3 objectWorldPos = UNITY_MATRIX_M._m03_m13_m23;
+                    float3 fragPos = IN.worldPos.xyz;
                     
+                    half3 modifiedNormal = NormalSpherelize(IN.normalWS, objectWorldPos, fragPos);
+                    
+                    float4 shadowCoord = TransformWorldToShadowCoord(fragPos);
+                    Light light = GetMainLight(shadowCoord);
+                
+                    return half4(color.rgb * CelLighting(modifiedNormal, light), color.a);
+                #else
                     SurfaceData surfaceData = (SurfaceData)0;
-                
-                    half4 control = SAMPLE_TEXTURE2D(_Control, sampler_Control, IN.uvControl); // R = Splat0, G = Splat1, B = Splat2, A = Splat3
-                
-                    half4 splat0 = SAMPLE_TEXTURE2D(_Splat0, sampler_Splat0, IN.uvSplat0_1.xy);
-                    half4 splat1 = SAMPLE_TEXTURE2D(_Splat1, sampler_Splat1, IN.uvSplat0_1.zw);
-                    half4 splat2 = SAMPLE_TEXTURE2D(_Splat2, sampler_Splat2, IN.uvSplat2_3.xy);
-                    half4 splat3 = SAMPLE_TEXTURE2D(_Splat3, sampler_Splat3, IN.uvSplat2_3.zw);
-                    
-                    half4 texColor = control.r * splat0 + control.g * splat1 + control.b * splat2 + control.a * splat3;
-                
+                    half4 texColor = TerrainColor(IN);
                     surfaceData.albedo = texColor.rgb;
                     surfaceData.alpha = texColor.a;
                     surfaceData.metallic = 0.0;     
@@ -125,38 +114,85 @@ Shader "Terrain/TerrainUnlit"
                 
                     InputData inputData = (InputData)0;
                     inputData.positionWS = IN.worldPos.xyz;
-                    inputData.normalWS = length(IN.normalWS) > 0.001 ? normalize(IN.normalWS) : float3(0, 1, 0);
+                    inputData.normalWS = normalize(IN.normalWS);
                     inputData.viewDirectionWS = GetWorldSpaceNormalizeViewDir(IN.worldPos.xyz);
                     inputData.shadowCoord = TransformWorldToShadowCoord(IN.worldPos.xyz);
                     inputData.bakedGI = SampleSH(inputData.normalWS);
-                    inputData.normalizedScreenSpaceUV = GetNormalizedScreenSpaceUV(IN.positionHCS);
                     inputData.shadowMask = half4(1, 1, 1, 1);
-                
+
                     return UniversalFragmentPBR(inputData, surfaceData);
-                #else
-                    return fragmentCalculation(IN);
                 #endif
+            }
+        
+        ENDHLSL
+        Pass
+        {
+            Name "LPRForward"
+            Tags { "LightMode" = "LPRForward" }
+            
+            HLSLPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+
+            half4 frag(Varyings IN) : SV_Target
+            {
+                return ForwardSurfaceLighting(IN);
             }
             ENDHLSL
         }
 
         Pass
         {
-            Name "LPRPackedForward"
-            Tags { "LightMode" = "LPRPackedForward" }
+            Name "LPRForwardPacked"
+            Tags { "LightMode" = "LPRForwardPacked" }
             
             HLSLPROGRAM
-
             #pragma vertex vert
             #pragma fragment frag
 
             uint frag(Varyings IN) : SV_Target
             {
-                half4 terrainColor = fragmentCalculation(IN);
+                half4 color = ForwardSurfaceLighting(IN);
+                color.a = GetDepthValue(IN.worldPos.w, _ProjectionParams.y, _ProjectionParams.z);
+                return PackRGBA(color, 1);
+            }
+            ENDHLSL
+        }
+
+        Pass
+        {
+            Name "LPRDeferred"
+            Tags { "LightMode" = "LPRDeferred" }
+            HLSLPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+
+            uint frag(Varyings IN) : SV_Target0
+            {
+                half4 color = TerrainColor(IN);
                 float3 objectWorldPos = UNITY_MATRIX_M._m03_m13_m23;
                 float3 fragPos = IN.worldPos.xyz;
                 half3 modifiedNormal = NormalSpherelize(IN.normalWS, objectWorldPos, fragPos);
-                return PackRGBNormal(terrainColor.rgb, modifiedNormal, 1);
+                return PackRGBNormal(color.rgb, modifiedNormal, 1);
+            }
+            ENDHLSL
+        }
+
+        Pass
+        {
+            Name "LPRDeferredPacked"
+            Tags { "LightMode" = "LPRDeferredPacked" }
+            HLSLPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+
+            uint frag(Varyings IN) : SV_Target0
+            {
+                half4 color = TerrainColor(IN);
+                float3 objectWorldPos = UNITY_MATRIX_M._m03_m13_m23;
+                float3 fragPos = IN.worldPos.xyz;
+                half3 modifiedNormal = NormalSpherelize(IN.normalWS, objectWorldPos, fragPos);
+                return PackRGBNormal(color.rgb, modifiedNormal, 1);
             }
             ENDHLSL
         }

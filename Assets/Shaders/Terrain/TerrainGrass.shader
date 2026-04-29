@@ -14,6 +14,7 @@ Shader "Custom/TerrainGrass"
         HLSLINCLUDE
             #pragma multi_compile_instancing  // GPU Instancing
             #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE
+            #pragma multi_compile _ _CUSTOM_LIGHTING
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
@@ -66,7 +67,7 @@ Shader "Custom/TerrainGrass"
                 return OUT;
             }
 
-            half4 fragmentCalculation(Varyings IN)
+            half4 GrassColor(Varyings IN)
             {
                 UNITY_SETUP_INSTANCE_ID(IN);
 
@@ -76,6 +77,38 @@ Shader "Custom/TerrainGrass"
                 half4 tColor = SAMPLE_TEXTURE2D(_TerrainColorMap, sampler_TerrainColorMap, uv);
                 return tColor;
             }
+            
+            half4 ForwardSurfaceLighting(Varyings IN)
+            {
+                half4 color = GrassColor(IN);
+                float3 worldNormal = float3(0, 1, 0); // Assuming grass blades are vertical. For more complex shapes, you would need to calculate the normal based on vertex data.
+                
+                #if defined(_CUSTOM_LIGHTING)
+                    float4 shadowCoord = TransformWorldToShadowCoord(IN.worldPos);
+                    Light light = GetMainLight(shadowCoord);
+                
+                    return half4(color.rgb * GrassLighting(light), color.a);
+                #else
+                    SurfaceData surfaceData = (SurfaceData)0;
+                    surfaceData.albedo = color.rgb;
+                    surfaceData.alpha = color.a;
+                    surfaceData.metallic = 0.0;     
+                    surfaceData.smoothness = 0.0;   
+                    surfaceData.normalTS = float3(0, 0, 1);
+                    surfaceData.emission = 0;
+                    surfaceData.occlusion = 1;
+                
+                    InputData inputData = (InputData)0;
+                    inputData.positionWS = IN.worldPos.xyz;
+                    inputData.normalWS = float3(0.0, 1.0, 0.0);
+                    inputData.viewDirectionWS = GetWorldSpaceNormalizeViewDir(IN.worldPos.xyz);
+                    inputData.shadowCoord = TransformWorldToShadowCoord(IN.worldPos.xyz);
+                    inputData.bakedGI = SampleSH(inputData.normalWS);
+                    inputData.shadowMask = half4(1, 1, 1, 1);
+                
+                    return UniversalFragmentPBR(inputData, surfaceData);
+                #endif
+            }
         ENDHLSL
         
         Pass
@@ -84,62 +117,63 @@ Shader "Custom/TerrainGrass"
             Tags { "LightMode" = "LPRForward" }
             
             HLSLPROGRAM
-
             #pragma vertex vert
             #pragma fragment frag
-            
-            #pragma multi_compile _ _USE_UNITY_PBR_LIT
 
             half4 frag(Varyings IN) : SV_Target
             {
-                #if defined(_USE_UNITY_PBR_LIT)
-                    
-                    SurfaceData surfaceData = (SurfaceData)0;
-                    float2 diff = IN.worldPos.xz - TERRAIN_COORD;
-                    float2 uv = float2(diff.x / TERRAIN_SIZE.x, diff.y / TERRAIN_SIZE.y);
-
-                    half4 texColor = SAMPLE_TEXTURE2D(_TerrainColorMap, sampler_TerrainColorMap, uv);
-                    surfaceData.albedo = texColor.rgb;
-                    surfaceData.alpha = texColor.a;
-                    surfaceData.metallic = 0.0;     
-                    surfaceData.smoothness = 0.0;   
-                    surfaceData.normalTS = float3(0, 0, 1);
-                    surfaceData.emission = 0;
-                    surfaceData.occlusion = 1;
-                
-                    InputData inputData = (InputData)0;
-                    inputData.positionWS = IN.worldPos;
-                    inputData.normalWS = normalize(float3(0.0, 1.0, 0.0)); // Upward facing normal for grass
-                    inputData.viewDirectionWS = GetWorldSpaceNormalizeViewDir(IN.worldPos);
-                    inputData.shadowCoord = TransformWorldToShadowCoord(IN.worldPos);
-                    inputData.bakedGI = SampleSH(inputData.normalWS);
-                    inputData.normalizedScreenSpaceUV = GetNormalizedScreenSpaceUV(IN.positionHCS);
-                    inputData.shadowMask = half4(1, 1, 1, 1);
-                    
-                    return UniversalFragmentPBR(inputData, surfaceData);
-                #else
-                    return fragmentCalculation(IN);
-                #endif
+                return ForwardSurfaceLighting(IN);
             }
-
             ENDHLSL
         }
-        
+
         Pass
         {
-            Name "LPRPackedForward"
-            Tags { "LightMode" = "LPRPackedForward" }
+            Name "LPRForwardPacked"
+            Tags { "LightMode" = "LPRForwardPacked" }
             
             HLSLPROGRAM
             #pragma vertex vert
-            #pragma fragment fragUniversal
+            #pragma fragment frag
 
-            uint fragUniversal(Varyings IN) : SV_Target0
+            uint frag(Varyings IN) : SV_Target
             {
-                half4 color = fragmentCalculation(IN);
-                return PackRGBNormal(color.rgb, float3(0.0, 1.0, 0.0), 0);
+                half4 color = ForwardSurfaceLighting(IN);
+                color.a = GetDepthValue(IN.zEye, _ProjectionParams.y, _ProjectionParams.z);
+                return PackRGBA(color, 0);
+            }
+            ENDHLSL
+        }
+
+        Pass
+        {
+            Name "LPRDeferred"
+            Tags { "LightMode" = "LPRDeferred" }
+            HLSLPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+
+            uint frag(Varyings IN) : SV_Target0
+            {
+                half4 color = GrassColor(IN);
                 
-                return PackRGBA(color, 0); 
+                return color;
+            }
+            ENDHLSL
+        }
+
+        Pass
+        {
+            Name "LPRDeferredPacked"
+            Tags { "LightMode" = "LPRDeferredPacked" }
+            HLSLPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+
+            uint frag(Varyings IN) : SV_Target0
+            {
+                half4 color = GrassColor(IN);
+                return PackRGBNormal(color.rgb, half3(0.0, 1.0, 0.0), 0);
             }
             ENDHLSL
         }

@@ -19,6 +19,8 @@ Shader "Custom/DecoderPostProcess"
             
             #pragma multi_compile _ _RENDER_NORMALS _RENDER_DEPTH
             #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE
+            #pragma multi_compile _ _DEFERRED_SHADING
+            #pragma multi_compile _ _CUSTOM_LIGHTING
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
@@ -41,6 +43,7 @@ Shader "Custom/DecoderPostProcess"
             
             Texture2D<uint> _BlitTexture;
             Texture2D<half> _LPR_DepthTexture;
+            
             float _NormalOutlineThreshold;
             
             Varyings vert(Attributes IN)
@@ -62,6 +65,7 @@ Shader "Custom/DecoderPostProcess"
             
             half4 frag(Varyings IN) : SV_Target
             {
+                
                 uint rtWidth, rtHeight;
                 _BlitTexture.GetDimensions(rtWidth, rtHeight);
                 int2 pixelCoord = int2(IN.uv * float2(rtWidth, rtHeight));
@@ -76,10 +80,8 @@ Shader "Custom/DecoderPostProcess"
                 float pDepthCenter = Linear01Depth(depth, _ZBufferParams);
                 float uDepthCenter = lerp(pDepthCenter, 1.0 - depth, unity_OrthoParams.w);
                 
-                // 2. DÜNYA POZİSYONU İÇİN SİHİRLİ DÜZELTME (Y-Flip Koruması)
+                // Y-flip is needed for correct world position reconstruction, as the depth texture might be flipped vertically based on platform and render target configuration.
                 float2 computeUV = IN.uv;
-                
-                // Unity'nin kendi makrosu: Eğer API Y eksenini ters çeviriyorsa ve hedefe ters çiziliyorsa
                 #if UNITY_UV_STARTS_AT_TOP
                 if (_ProjectionParams.x > 0.0)
                 {
@@ -88,10 +90,38 @@ Shader "Custom/DecoderPostProcess"
                 #endif
                 
                 float3 worldPos = ComputeWorldSpacePosition(computeUV, depth, UNITY_MATRIX_I_VP);
-                float4 shadowCoord = TransformWorldToShadowCoord(worldPos);
-                Light light = GetMainLight(shadowCoord);
                 
-                color *= lerp(GrassLighting(light), CelLighting(normal, light), outlineFlag);
+                // Light calculations //
+                #if defined(_DEFERRED_SHADING)
+                    
+                    #if defined(_CUSTOM_LIGHTING)
+                        float4 shadowCoord = TransformWorldToShadowCoord(worldPos);
+                        Light light = GetMainLight(shadowCoord);
+                        
+                        color *= lerp(GrassLighting(light), CelLighting(normal, light), outlineFlag);
+                    #else
+                        half3 albedo = color.rgb;
+                        half metallic = 0.0;
+                        half smoothness = 0.0;
+                        half alpha = 1.0;
+                
+                        BRDFData brdfData;
+                        InitializeBRDFData(albedo, metallic, 0, smoothness, alpha, brdfData);
+                
+                        half3 viewDirectionWS = GetWorldSpaceNormalizeViewDir(worldPos);
+                        half3 normalWS = normalize(normal);
+                
+                        float4 shadowCoord = TransformWorldToShadowCoord(worldPos);
+                        Light light = GetMainLight(shadowCoord);
+                        light.distanceAttenuation = 1.0; // Somehow the distance attenuation is not working correctly in this context, so we set it to 1.0 to avoid darkening the result.
+                
+                        half3 pbrLighting = LightingPhysicallyBased(brdfData, light, normalWS, viewDirectionWS);
+                        half3 bakedGI = SampleSH(normalWS);
+                        half3 ambientLighting = GlobalIllumination(brdfData, bakedGI, 1.0, normalWS, viewDirectionWS);
+                
+                        color = pbrLighting + ambientLighting;
+                    #endif
+                #endif
                 
                 depth = pow(uDepthCenter, DEPTH_POW);
                 
