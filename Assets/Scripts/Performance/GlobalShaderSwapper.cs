@@ -28,24 +28,28 @@ public class GlobalShaderSwapper : MonoBehaviour
             globalURPAsset = GraphicsSettings.currentRenderPipeline as UniversalRenderPipelineAsset;
         SwitchToCustomShader();
         SwitchToUpscaling();
+        SwitchToDeferredShading();
     }
     
     private void OnEnable()
     {
         SwitchToCustomShader();
         SwitchToUpscaling();
+        SwitchToDeferredShading();
     }
     
     void OnDisable()
     {
         SwitchToCustomShader();
         SwitchToUpscaling();
+        SwitchToDeferredShading();
     }
 
     private void OnApplicationQuit()
     {
         SwitchToCustomShader();
         SwitchToUpscaling();
+        SwitchToDeferredShading();
     }
 
     public void ToggleCustomShader()

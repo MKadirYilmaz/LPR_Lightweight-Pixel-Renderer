@@ -14,7 +14,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::LPRRendererFeature
   m_Active: 1
   settings:
-    decodeMaterial: {fileID: 2100000, guid: e2b7710e716d78248896c6f807eeff0e, type: 2}
+    opaqueDecodeMaterial: {fileID: 2100000, guid: e2b7710e716d78248896c6f807eeff0e, type: 2}
+    globalPostProcessMaterial: {fileID: 2100000, guid: 19dcec0a7430d6d4fb82d3d39c65dfa1, type: 2}
     renderScale: 0.3125
 --- !u!114 &11400000
 MonoBehaviour:

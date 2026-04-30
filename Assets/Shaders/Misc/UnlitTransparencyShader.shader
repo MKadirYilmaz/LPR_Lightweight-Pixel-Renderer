@@ -18,8 +18,8 @@ Shader "Custom/UnlitTransparencyShader"
 
         Pass
         {
-            Name "UniversalForward"
-            Tags { "LightMode" = "UniversalForward" }
+            Name "LPRForward"
+            Tags { "LightMode" = "LPRForward" }
             
             // Depth write off
             ZWrite Off 
@@ -28,7 +28,7 @@ Shader "Custom/UnlitTransparencyShader"
             Blend SrcAlpha OneMinusSrcAlpha 
             
             // Do not write to the alpha channel of the render target, since we're only interested in RGB for this shader.
-            ColorMask RGB 
+            //ColorMask RGB 
             
 
             HLSLPROGRAM

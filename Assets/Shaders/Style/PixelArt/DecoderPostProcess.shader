@@ -82,12 +82,9 @@ Shader "Custom/DecoderPostProcess"
                 
                 // Y-flip is needed for correct world position reconstruction, as the depth texture might be flipped vertically based on platform and render target configuration.
                 float2 computeUV = IN.uv;
-                #if UNITY_UV_STARTS_AT_TOP
-                if (_ProjectionParams.x > 0.0)
-                {
-                    computeUV.y = 1.0 - computeUV.y; // Y eksenini matematik için geri çevir!
-                }
-                #endif
+                computeUV.y = 1.0 - computeUV.y;
+                // UV problem between perspective view and orthographic view
+                computeUV = lerp(IN.uv, computeUV, unity_OrthoParams.w);
                 
                 float3 worldPos = ComputeWorldSpacePosition(computeUV, depth, UNITY_MATRIX_I_VP);
                 
