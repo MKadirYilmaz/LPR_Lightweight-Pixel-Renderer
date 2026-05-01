@@ -142,14 +142,25 @@ Shader "Custom/CelLightingModel"
             HLSLPROGRAM
             #pragma vertex vert
             #pragma fragment frag
-
-            uint frag(Varyings IN) : SV_Target0
+            
+            struct FragOutput
             {
+                uint color0 : SV_Target0;
+                uint color1 : SV_Target1;
+            };
+
+            FragOutput frag(Varyings IN)
+            {
+                FragOutput OUT;
                 half4 color = SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, IN.uv);
+                OUT.color0 = PackLightPassBuffer(color.rgb, 0);
+                
                 float3 objectWorldPos = UNITY_MATRIX_M._m03_m13_m23;
                 float3 fragPos = IN.worldPos.xyz;
                 half3 modifiedNormal = NormalSpherelize(IN.normalWS, objectWorldPos, fragPos);
-                return PackRGBNormal(color.rgb, modifiedNormal, 1);
+                OUT.color1 = PackDepthNormalGBuffer(GetDepthValue(IN.worldPos.w, _ProjectionParams.y, _ProjectionParams.z), modifiedNormal);
+                
+                return OUT;
             }
             ENDHLSL
         }

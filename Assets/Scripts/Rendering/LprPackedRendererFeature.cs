@@ -32,12 +32,14 @@ namespace Rendering
         private class LprPassData : ContextItem
         {
             public TextureHandle ColorTarget;
+            public TextureHandle GBufferTarget;
             public TextureHandle DepthTarget;
 
             public override void Reset()
             {
                 ColorTarget = TextureHandle.nullHandle;
                 DepthTarget = TextureHandle.nullHandle;
+                GBufferTarget = TextureHandle.nullHandle;
             }
         }
 
@@ -71,7 +73,7 @@ namespace Rendering
             public LprOpaquePass(float scale)
             {
                 mScale = scale;
-                renderPassEvent = RenderPassEvent.AfterRenderingSkybox;
+                renderPassEvent = RenderPassEvent.BeforeRenderingOpaques;
             }
 
             private class OpaquePassData
@@ -83,7 +85,7 @@ namespace Rendering
             {
                 UniversalCameraData cameraData = frameData.Get<UniversalCameraData>();
                 UniversalRenderingData renderingData = frameData.Get<UniversalRenderingData>();
-
+                
                 int width = Mathf.Max(1, Mathf.RoundToInt(cameraData.cameraTargetDescriptor.width * mScale));
                 int height = Mathf.Max(1, Mathf.RoundToInt(cameraData.cameraTargetDescriptor.height * mScale));
 
@@ -92,7 +94,16 @@ namespace Rendering
                     colorFormat = GraphicsFormat.R32_UInt,
                     depthBufferBits = DepthBits.None,
                     msaaSamples = MSAASamples.None,
-                    name = "LPR_UintBuffer",
+                    name = "LPR_uColorBuffer",
+                    clearBuffer = true,
+                    clearColor = Color.black
+                };
+                TextureDesc gBuffer0Desc = new TextureDesc(width, height)
+                {
+                    colorFormat = GraphicsFormat.R32_UInt,
+                    depthBufferBits = DepthBits.None,
+                    msaaSamples = MSAASamples.None,
+                    name = "LPR_uGBuffer0",
                     clearBuffer = true,
                     clearColor = Color.black
                 };
@@ -106,11 +117,13 @@ namespace Rendering
                 };
 
                 TextureHandle uintTexture = renderGraph.CreateTexture(uintDesc);
+                TextureHandle gBuffer0Texture = renderGraph.CreateTexture(gBuffer0Desc);
                 TextureHandle hardwareDepthTexture = renderGraph.CreateTexture(hardwareDepthDesc);
 
                 LprPassData lprData = frameData.GetOrCreate<LprPassData>();
                 lprData.ColorTarget = uintTexture;
                 lprData.DepthTarget = hardwareDepthTexture;
+                lprData.GBufferTarget = gBuffer0Texture;
                 
                 // Set up drawing and filtering settings to render only opaque objects with our custom shader pass
                 SortingSettings sortingSettings = new SortingSettings(cameraData.camera)
@@ -134,6 +147,8 @@ namespace Rendering
                     builder.UseRendererList(rendererList);
                     
                     builder.SetRenderAttachment(uintTexture, 0);
+                    builder.SetRenderAttachment(gBuffer0Texture, 1);
+                    
                     builder.SetRenderAttachmentDepth(hardwareDepthTexture);
 
                     builder.SetRenderFunc((OpaquePassData data, RasterGraphContext context) =>
@@ -152,13 +167,13 @@ namespace Rendering
             public LprOpaquePostProcessPass(Material material)
             {
                 mDecodeMaterial = material;
-                renderPassEvent = RenderPassEvent.BeforeRenderingTransparents;
+                renderPassEvent = (RenderPassEvent)255;
             }
 
-            private class BlitPassData
+            private class OpaquePPData
             {
                 public TextureHandle SourceHandle;
-                public TextureHandle DepthHandle;
+                public TextureHandle GBuffer0Handle;
                 public Material Material;
             }
 
@@ -179,28 +194,26 @@ namespace Rendering
                     clearColor = Color.black
                 };
                 TextureHandle uintTexture = lprData.ColorTarget;
+                TextureHandle gBuffer0 = lprData.GBufferTarget;
                 TextureHandle colorTexture = renderGraph.CreateTexture(colorTexDesc);
                 
                 lprData.ColorTarget =  colorTexture;
                 
-                //TextureHandle destinationTarget = resourceData.activeColorTexture;
-                //if (!destinationTarget.IsValid()) return;
 
-                using (var builder = renderGraph.AddRasterRenderPass<BlitPassData>("LPR Opaque PP Pass", out var passData))
+                using (var builder = renderGraph.AddRasterRenderPass<OpaquePPData>("LPR Opaque PP Pass", out var passData))
                 {
                     passData.SourceHandle = uintTexture;
-                    passData.DepthHandle = lprData.DepthTarget;
+                    passData.GBuffer0Handle = gBuffer0;
                     passData.Material = mDecodeMaterial;
-
-                    builder.UseTexture(passData.SourceHandle);
-                    builder.UseTexture(passData.DepthHandle);
+                    
+                    builder.SetInputAttachment(passData.SourceHandle, 0);
+                    builder.SetInputAttachment(passData.GBuffer0Handle, 1);
                     
                     builder.SetRenderAttachment(colorTexture, 0);
 
-                    builder.SetRenderFunc((BlitPassData data, RasterGraphContext context) =>
+                    builder.SetRenderFunc((OpaquePPData data, RasterGraphContext context) =>
                     {
-                        data.Material.SetTexture("_LPR_DepthTexture", data.DepthHandle);
-                        Blitter.BlitTexture(context.cmd, data.SourceHandle, new Vector4(1, 1, 0, 0), data.Material, 0);
+                        context.cmd.DrawProcedural(Matrix4x4.identity, data.Material, 0, MeshTopology.Triangles, 3, 1, null);
                     });
                 }
             }
@@ -212,7 +225,7 @@ namespace Rendering
             
             public LprTransparencyPass()
             {
-                renderPassEvent = (RenderPassEvent)455;
+                renderPassEvent = (RenderPassEvent)260;
             }
 
             private class TransparencyPassData
@@ -270,13 +283,13 @@ namespace Rendering
             public LprBlitPass(Material blitPostProcessMaterial)
             {
                 mBlitPostProcessMaterial = blitPostProcessMaterial;
-                renderPassEvent = (RenderPassEvent)460;
+                renderPassEvent = (RenderPassEvent)500;
             }
 
             public class BlitPassData
             {
                 public TextureHandle SourceHandle;
-                public TextureHandle DepthHandle;
+                public TextureHandle GBuffer0Handle;
                 public Material Material;
             }
 
@@ -289,21 +302,22 @@ namespace Rendering
                 
                 TextureHandle destinationTarget = resourceData.activeColorTexture;
                 if (!destinationTarget.IsValid()) return;
+                
 
                 using (var builder = renderGraph.AddRasterRenderPass<BlitPassData>("LPR Global PP Pass", out var passData))
                 {
                     passData.SourceHandle = lprData.ColorTarget;
-                    passData.DepthHandle = lprData.DepthTarget;
+                    passData.GBuffer0Handle = lprData.GBufferTarget;
                     passData.Material = mBlitPostProcessMaterial;
 
                     builder.UseTexture(passData.SourceHandle);
-                    builder.UseTexture(passData.DepthHandle);
+                    builder.UseTexture(passData.GBuffer0Handle);
                     
                     builder.SetRenderAttachment(destinationTarget, 0);
 
                     builder.SetRenderFunc((BlitPassData data, RasterGraphContext context) =>
                     {
-                        data.Material.SetTexture("_LPR_DepthTexture", data.DepthHandle);
+                        data.Material.SetTexture("_GBuffer0", data.GBuffer0Handle);
                         Blitter.BlitTexture(context.cmd, data.SourceHandle, new Vector4(1, 1, 0, 0), data.Material, 0);
                     });
                 }

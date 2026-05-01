@@ -54,33 +54,100 @@ uint PackRGBA(half4 rgba, uint outlineFlag)
     return packedData;
 }
 
-// --- PAKETLEME (ENCODE) ---
 uint PackRGBNormal(half3 rgb, half3 normal, uint outlineFlag)
 {
     float3 hsv = RGBtoHSV(rgb);
     
-    // Optimizasyon: clamp yerine max kullanmak daha ucuzdur (Dark protection negatif olamayacağı için)
     float safeProtection = max(DARK_PROTECTION, 0.0);
     float adjustedValue = pow(hsv.z, 1.0 - safeProtection);
     
-    // HSV ve Flag'i uint'e çevir
     uint h = (uint)(saturate(hsv.x) * (float)MAX_H + 0.5);
     uint s = (uint)(saturate(hsv.y) * (float)MAX_S + 0.5);
     uint v = (uint)(saturate(adjustedValue) * (float)MAX_V + 0.5);
     uint f = outlineFlag & 1u;
     
-    // DÜZELTME 1: Normali -1..1 aralığından 0..1 aralığına GÜVENLİ taşı (Negative Uint Underflow engeli)
-    // normal.xy * 0.5 + 0.5 işlemi -1'i 0 yapar, 1'i 1 yapar.
     float2 normUV = normal.xy * 0.5 + 0.5;
     
-    // 0..1 aralığını 0..255 (MAX_NX) aralığına genişlet
     uint nX = (uint)(saturate(normUV.x) * (float)MAX_NX + 0.5);
     uint nY = (uint)(saturate(normUV.y) * (float)MAX_NY + 0.5);
     
-    // DÜZELTME 2: Ayrı bit kaydırmalarıyla temiz paketleme
     uint packedData = (nY << SHIFT_NY) | (nX << SHIFT_NX) | (f << SHIFT_F) | (v << SHIFT_V) | (s << SHIFT_S) | h;
     
     return packedData;
+}
+
+uint PackLightPassBuffer(half3 rgb, uint other)
+{
+    float3 hsv = RGBtoHSV(rgb);
+    
+    float safeProtection = clamp(DARK_PROTECTION, 0.0, 0.99);
+    float adjustedValue = pow(hsv.z, 1.0 - safeProtection);
+    
+    uint h = (uint)(saturate(hsv.x) * (float)MAX_H + 0.5);
+    uint s = (uint)(saturate(hsv.y) * (float)MAX_S + 0.5);
+    uint v = (uint)(saturate(adjustedValue) * (float)MAX_V + 0.5);
+    
+    uint packed = (v << SHIFT_V) | (s << SHIFT_S) | h;
+    return packed;
+}
+
+uint PackDepthNormalGBuffer(float depth, float3 normal)
+{
+    const uint D_MAX = (1 << 16) - 1;
+    const uint N_MAX = (1 << 8) - 1;
+    uint d = (uint)(saturate(depth) * (float)D_MAX + 0.5);
+    
+    float2 normUV = normal.xy * 0.5 + 0.5;
+    
+    uint nX = (uint)(saturate(normUV.x) * (float)N_MAX + 0.5);
+    uint nY = (uint)(saturate(normUV.y) * (float)N_MAX + 0.5);
+    
+    uint packed = (d << 16) | (nY << 8) | nX;
+    
+    return packed;
+}
+
+half3 UnpackLightPassBuffer(uint packedData)
+{
+    uint h = packedData & MAX_H;
+    uint s = (packedData >> SHIFT_S) & MAX_S;
+    uint v = (packedData >> SHIFT_V) & MAX_V;
+    
+    float3 hsv;
+    hsv.x = (float)h / (float)MAX_H;
+    hsv.y = (float)s / (float)MAX_S;
+    float adjustedValue = (float)v / (float)MAX_V;
+    
+    float safeProtection = clamp(DARK_PROTECTION, 0.0, 0.99);
+    hsv.z = pow(adjustedValue, 1.0 / (1.0 - safeProtection));
+    
+    return HSVtoRGB(hsv);
+}
+
+float3 UnpackDepthNormalGBuffer(uint packedData, out float depth)
+{
+    const uint D_MAX = (1 << 16) - 1;
+    const uint N_MAX = (1 << 8) - 1;
+    
+    uint nX_uint = packedData & N_MAX;
+    uint nY_uint = (packedData >> 8) & N_MAX;
+    
+    float2 normUV;
+    normUV.x = (float)nX_uint / (float)N_MAX;
+    normUV.y = (float)nY_uint / (float)N_MAX;
+    
+    float3 normal;
+    normal.x = normUV.x * 2.0 - 1.0;
+    normal.y = normUV.y * 2.0 - 1.0;
+    
+    float xySqr = normal.x * normal.x + normal.y * normal.y;
+    normal.z = sqrt(1.0 - saturate(xySqr));
+    normal = normalize(normal);
+    
+    uint d = (packedData >> 16) & D_MAX;
+    depth = (float)d / (float)D_MAX;
+    
+    return normal;
 }
 
 half3 UnpackRGBNormal(uint packedData, out half3 normal, out uint outlineFlag)
@@ -135,31 +202,23 @@ half3 UnpackRGB(uint packedData, out uint outlineFlag)
     return HSVtoRGB(hsv);
 }
 
-// --- PAKET AÇMA (DECODE) ---
 half3 UnpackNormal(uint packedData)
 {
-    // 1. Bitleri güvenli bir şekilde maskeleyip ayıkla
     uint nX_uint = (packedData >> SHIFT_NX) & MAX_NX;
     uint nY_uint = (packedData >> SHIFT_NY) & MAX_NY;
     
-    // 2. Uint'i 0.0 ile 1.0 arasına çevir
     float2 normUV;
     normUV.x = (float)nX_uint / (float)MAX_NX;
     normUV.y = (float)nY_uint / (float)MAX_NY;
     
-    // 3. 0.0..1.0 aralığını gerçek normal olan -1.0..1.0 aralığına geri çevir
     half3 normal;
     normal.x = normUV.x * 2.0 - 1.0;
     normal.y = normUV.y * 2.0 - 1.0;
     
-    // 4. Z'yi yeniden oluştur (X ve Y'nin kareleri toplamı 1'den büyük olamaz, ufak hataları engellemek için saturate kullanıyoruz)
     float xySqr = normal.x * normal.x + normal.y * normal.y;
     normal.z = sqrt(1.0 - saturate(xySqr));
     
-    // Opsiyonel: Eğer Z'nin her zaman kameraya doğru (pozitif) baktığını varsayıyorsak bu yeterlidir.
-    // Eğer geriye bakan yüzeyleri de okuyorsak Z işareti her zaman pozitif çıkacaktır (hata).
-    
-    return normalize(normal); // Hassasiyet kaybını gidermek için normalize et
+    return normalize(normal);
 }
 
 float4 UnpackRGBA(uint packedData, out uint outlineFlag)
