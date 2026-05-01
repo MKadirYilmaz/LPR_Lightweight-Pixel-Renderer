@@ -41,6 +41,22 @@ Shader "Custom/DecoderPostProcess"
             FRAMEBUFFER_INPUT_UINT(0);
             FRAMEBUFFER_INPUT_UINT(1);
             
+            half4 CalculateLightPass(uint shaderID, float3 worldPos, float3 normal, half3 color)
+            {
+                float4 shadowCoord = TransformWorldToShadowCoord(worldPos); 
+                Light light = GetMainLight(shadowCoord);
+                switch (shaderID)
+                {
+                case 0u:
+                    return half4(color * CelLighting(normal, light), 1.0);
+                case 1u:
+                    return half4(color * GrassLighting(light), 0.0);
+                default:
+                    return half4(0.0, 0.0, 0.0, 0.0);
+                }
+            }
+            
+            
             Varyings vert(Attributes IN)
             {
                 Varyings OUT;
@@ -64,7 +80,8 @@ Shader "Custom/DecoderPostProcess"
                 uint colorPackage = LOAD_FRAMEBUFFER_INPUT(0, IN.positionHCS.xy).x;
                 uint gBufferPackage = LOAD_FRAMEBUFFER_INPUT(1, IN.positionHCS.xy).x;
                 
-                half3 color = UnpackLightPassBuffer(colorPackage);
+                uint shaderID;
+                half3 color = UnpackLightPassBuffer(colorPackage, shaderID);
                 float depth;
                 float3 normal = UnpackDepthNormalGBuffer(gBufferPackage, depth);
                 float rawDepth = pow(depth, 1.0 / DEPTH_POW);
@@ -80,14 +97,12 @@ Shader "Custom/DecoderPostProcess"
                 // UV problem between perspective view and orthographic view
                 computeUV = lerp(IN.uv, computeUV, unity_OrthoParams.w);
                 float3 worldPos = ComputeWorldSpacePosition(computeUV, uDepth, UNITY_MATRIX_I_VP);
-                //return half4(frac(worldPos), 1.0);
+                //return half4(frac(worldPos), 1.0)
+                half4 finalColor;
                 #if defined(_DEFERRED_SHADING)
                     
                     #if defined(_CUSTOM_LIGHTING)
-                        float4 shadowCoord = TransformWorldToShadowCoord(worldPos);
-                        Light light = GetMainLight(shadowCoord);
-                        
-                        color *= CelLighting(normal, light);
+                        finalColor = CalculateLightPass(shaderID, worldPos, normal, color);
                     #else
                         half3 albedo = color.rgb;
                         half metallic = 0.0;
@@ -111,7 +126,7 @@ Shader "Custom/DecoderPostProcess"
                         color = pbrLighting + ambientLighting;
                     #endif
                 #endif
-                return half4(color, 1.0);
+                return finalColor;
             }
             ENDHLSL
         }

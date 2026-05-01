@@ -180,7 +180,7 @@ Shader "Custom/TerrainGrass"
             {
                 FragOutput OUT;
                 half4 color = GrassColor(IN);
-                OUT.color0 = PackLightPassBuffer(color.rgb, 0);
+                OUT.color0 = PackLightPassBuffer(color.rgb, 1);
                 
                 OUT.color1 = PackDepthNormalGBuffer(GetDepthValue(IN.zEye, _ProjectionParams.y, _ProjectionParams.z), float3(0.0, 1.0, 0.0));
                 return OUT;

@@ -48,7 +48,7 @@ Shader "Custom/GlobalPostProcess"
                     return half4(normalCenter, 1.0);
                 #endif
                 
-                #if defined(_RENDER_NORMALS)
+                #if defined(_RENDER_DEPTH)
                     return half4(depthCenter, depthCenter, depthCenter, 1.0);
                 #endif
                 

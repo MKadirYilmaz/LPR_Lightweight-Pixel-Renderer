@@ -76,7 +76,7 @@ uint PackRGBNormal(half3 rgb, half3 normal, uint outlineFlag)
     return packedData;
 }
 
-uint PackLightPassBuffer(half3 rgb, uint other)
+uint PackLightPassBuffer(half3 rgb, uint shaderID)
 {
     float3 hsv = RGBtoHSV(rgb);
     
@@ -87,7 +87,10 @@ uint PackLightPassBuffer(half3 rgb, uint other)
     uint s = (uint)(saturate(hsv.y) * (float)MAX_S + 0.5);
     uint v = (uint)(saturate(adjustedValue) * (float)MAX_V + 0.5);
     
-    uint packed = (v << SHIFT_V) | (s << SHIFT_S) | h;
+    const uint MAX_ID = (1 << 4) - 1;
+    uint id = shaderID & MAX_ID;
+    
+    uint packed = (id << 15) | (v << SHIFT_V) | (s << SHIFT_S) | h;
     return packed;
 }
 
@@ -107,11 +110,14 @@ uint PackDepthNormalGBuffer(float depth, float3 normal)
     return packed;
 }
 
-half3 UnpackLightPassBuffer(uint packedData)
+half3 UnpackLightPassBuffer(uint packedData, out uint shaderID)
 {
     uint h = packedData & MAX_H;
     uint s = (packedData >> SHIFT_S) & MAX_S;
     uint v = (packedData >> SHIFT_V) & MAX_V;
+    
+    const uint MAX_ID = (1 << 4) - 1;
+    shaderID = (packedData >> 15) & MAX_ID;
     
     float3 hsv;
     hsv.x = (float)h / (float)MAX_H;
