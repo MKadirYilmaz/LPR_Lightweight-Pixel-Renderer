@@ -25,7 +25,7 @@ Shader "Custom/UnlitTransparencyShader"
             ZWrite Off 
             
             // Blending
-            Blend SrcAlpha OneMinusSrcAlpha 
+            Blend SrcAlpha OneMinusSrcAlpha, Zero OneMinusSrcAlpha
             
             // Do not write to the alpha channel of the render target, since we're only interested in RGB for this shader.
             //ColorMask RGB 

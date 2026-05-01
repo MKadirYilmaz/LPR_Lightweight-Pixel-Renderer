@@ -77,9 +77,10 @@ Shader "Custom/GlobalPostProcess"
                 isInnerEdge += step(_NormalOutlineThreshold, curveY);
                 isInnerEdge = saturate(isInnerEdge);
                 
-                half3 finalColor = lerp(color.rgb, half3(0.0, 0.0, 0.0), isInnerEdge);
+                // Outline will be suitable with transparency
+                half3 finalColor = lerp(color.rgb, half3(0.0, 0.0, 0.0), isInnerEdge * color.a);
                 finalColor = ApplyFog(finalColor, depthCenter);
-                return half4(finalColor, color.a);
+                return half4(finalColor, 1.0);
             }
             ENDHLSL
         }
