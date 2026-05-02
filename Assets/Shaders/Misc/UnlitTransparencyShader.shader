@@ -3,7 +3,6 @@ Shader "Custom/UnlitTransparencyShader"
     Properties
     {
         _BaseColor("Base Color", Color) = (1, 1, 1, 0.5)
-        _MainTex("Base Map (RGB) Alpha (A)", 2D) = "white" {}
     }
 
     SubShader
@@ -36,6 +35,9 @@ Shader "Custom/UnlitTransparencyShader"
             #pragma fragment frag
             
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+            
+            #include "Assets/Shaders/Style/PixelArt/DepthCalculations.hlsl"
+            #include "Assets/Shaders/Misc/FogSystem.hlsl"
 
             struct Attributes
             {
@@ -46,31 +48,31 @@ Shader "Custom/UnlitTransparencyShader"
             struct Varyings
             {
                 float4 positionHCS  : SV_POSITION;
-                float2 uv           : TEXCOORD0;
+                float zEye          : TEXCOORD0;
             };
-
-            TEXTURE2D(_MainTex);
-            SAMPLER(sampler_MainTex);
+            
             
             CBUFFER_START(UnityPerMaterial)
                 float4 _BaseColor;
-                float4 _MainTex_ST;
             CBUFFER_END
 
-            Varyings vert(Attributes input)
+            Varyings vert(Attributes IN)
             {
-                Varyings output;
-                output.positionHCS = TransformObjectToHClip(input.positionOS.xyz);
-                output.uv = TRANSFORM_TEX(input.uv, _MainTex);
-                return output;
+                Varyings OUT;
+                OUT.positionHCS = TransformObjectToHClip(IN.positionOS.xyz);
+                VertexPositionInputs vertexInputs = GetVertexPositionInputs(IN.positionOS.xyz);
+                OUT.zEye = -vertexInputs.positionVS.z;
+                
+                return OUT;
             }
 
-            half4 frag(Varyings input) : SV_Target
+            half4 frag(Varyings IN) : SV_Target
             {
-                half4 texColor = SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, input.uv);
-                half4 finalColor = texColor * _BaseColor;
+                half4 color = _BaseColor;
                 
-                return finalColor;
+                color.rgb = ApplyFog(color.rgb, GetDepthValue(IN.zEye, _ProjectionParams.y, _ProjectionParams.z));
+                
+                return color;
             }
             ENDHLSL
         }

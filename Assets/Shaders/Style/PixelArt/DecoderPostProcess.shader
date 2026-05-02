@@ -25,6 +25,7 @@ Shader "Custom/DecoderPostProcess"
             
             #include "Assets/Shaders/Style/PixelArt/DepthCalculations.hlsl"
             #include "Assets/Shaders/Lighting/CustomLighting.hlsl"
+            #include "Assets/Shaders/Misc/FogSystem.hlsl"
 
             
             struct Attributes
@@ -74,16 +75,24 @@ Shader "Custom/DecoderPostProcess"
                 return OUT;
             }
             
+            float3 GetSafeGBufferData(uint package, out float depth)
+            {
+                if (package == 0)
+                {
+                    discard;
+                }
+                return UnpackDepthNormalGBuffer(package, depth);
+            }
+            
             half4 frag(Varyings IN) : SV_Target
             {
-                
                 uint colorPackage = LOAD_FRAMEBUFFER_INPUT(0, IN.positionHCS.xy).x;
                 uint gBufferPackage = LOAD_FRAMEBUFFER_INPUT(1, IN.positionHCS.xy).x;
                 
                 uint shaderID;
                 half3 color = UnpackLightPassBuffer(colorPackage, shaderID);
                 float depth;
-                float3 normal = UnpackDepthNormalGBuffer(gBufferPackage, depth);
+                float3 normal = GetSafeGBufferData(gBufferPackage, depth);
                 float rawDepth = pow(depth, 1.0 / DEPTH_POW);
                 
                 float zEye = rawDepth * (_ProjectionParams.z - _ProjectionParams.y) + _ProjectionParams.y;
@@ -97,14 +106,13 @@ Shader "Custom/DecoderPostProcess"
                 // UV problem between perspective view and orthographic view
                 computeUV = lerp(IN.uv, computeUV, unity_OrthoParams.w);
                 float3 worldPos = ComputeWorldSpacePosition(computeUV, uDepth, UNITY_MATRIX_I_VP);
-                //return half4(frac(worldPos), 1.0)
-                half4 finalColor;
+                half4 finalColor = half4(color, 1.0);
                 #if defined(_DEFERRED_SHADING)
                     
                     #if defined(_CUSTOM_LIGHTING)
                         finalColor = CalculateLightPass(shaderID, worldPos, normal, color);
                     #else
-                        half3 albedo = color.rgb;
+                        half3 albedo = finalColor.rgb;
                         half metallic = 0.0;
                         half smoothness = 0.0;
                         half alpha = 1.0;
@@ -123,9 +131,10 @@ Shader "Custom/DecoderPostProcess"
                         half3 bakedGI = SampleSH(normalWS);
                         half3 ambientLighting = GlobalIllumination(brdfData, bakedGI, 1.0, normalWS, viewDirectionWS);
                 
-                        color = pbrLighting + ambientLighting;
+                        finalColor.rgb = pbrLighting + ambientLighting;
                     #endif
                 #endif
+                finalColor.rgb = ApplyFog(finalColor.rgb, depth);
                 return finalColor;
             }
             ENDHLSL

@@ -27,6 +27,16 @@ Shader "Custom/GlobalPostProcess"
             float _NormalOutlineThreshold;
             Texture2D<uint> _GBuffer0;
             
+            float3 GetSafeGBufferData(uint package, out float depth)
+            {
+                if (package == 0)
+                {
+                    depth = 1.0;
+                    return float3(0.0, -1.0, 0.0);
+                }
+                return UnpackDepthNormalGBuffer(package, depth);
+            }
+            
             half4 frag(Varyings IN) : SV_Target
             {
                 float2 uv = IN.texcoord;
@@ -43,7 +53,8 @@ Shader "Custom/GlobalPostProcess"
                 int2 pixelCoord = int2(uv * float2(rtWidth, rtHeight));
                 
                 float depthCenter;
-                float3 normalCenter = UnpackDepthNormalGBuffer(_GBuffer0.Load(int3(pixelCoord, 0)), depthCenter);
+                float3 normalCenter = GetSafeGBufferData(_GBuffer0.Load(int3(pixelCoord, 0)), depthCenter);
+                
                 #if defined(_RENDER_NORMALS)
                     return half4(normalCenter, 1.0);
                 #endif
@@ -62,10 +73,10 @@ Shader "Custom/GlobalPostProcess"
                 float depthLeft;
                 float depthRight;
                 
-                float3 normalUp     = UnpackDepthNormalGBuffer(_GBuffer0.Load(int3(float2(pixelCoord.x ,clamp(pixelCoord.y + 1.0, 0.0, rtHeight)), 0)), depthUp);
-                float3 normalDown   = UnpackDepthNormalGBuffer(_GBuffer0.Load(int3(float2(pixelCoord.x ,clamp(pixelCoord.y - 1.0, 0.0, rtHeight)), 0)), depthDown);
-                float3 normalLeft   = UnpackDepthNormalGBuffer(_GBuffer0.Load(int3(float2(clamp(pixelCoord.x - 1.0, 0.0, rtWidth), pixelCoord.y), 0)), depthLeft);
-                float3 normalRight  = UnpackDepthNormalGBuffer(_GBuffer0.Load(int3(float2(clamp(pixelCoord.x + 1.0, 0.0, rtWidth), pixelCoord.y), 0)), depthRight);
+                float3 normalUp     = GetSafeGBufferData(_GBuffer0.Load(int3(float2(pixelCoord.x ,clamp(pixelCoord.y + 1.0, 0.0, rtHeight)), 0)), depthUp);
+                float3 normalDown   = GetSafeGBufferData(_GBuffer0.Load(int3(float2(pixelCoord.x ,clamp(pixelCoord.y - 1.0, 0.0, rtHeight)), 0)), depthDown);
+                float3 normalLeft   = GetSafeGBufferData(_GBuffer0.Load(int3(float2(clamp(pixelCoord.x - 1.0, 0.0, rtWidth), pixelCoord.y), 0)), depthLeft);
+                float3 normalRight  = GetSafeGBufferData(_GBuffer0.Load(int3(float2(clamp(pixelCoord.x + 1.0, 0.0, rtWidth), pixelCoord.y), 0)), depthRight);
                 
                 // Calculate curvature using the second derivative (Laplacian) of the depth
                 float curveX = (depthLeft + depthRight) - (2.0 * depthCenter);
@@ -78,8 +89,7 @@ Shader "Custom/GlobalPostProcess"
                 isInnerEdge = saturate(isInnerEdge);
                 
                 // Outline will be suitable with transparency
-                half3 finalColor = lerp(color.rgb, half3(0.0, 0.0, 0.0), isInnerEdge * color.a);
-                finalColor = ApplyFog(finalColor, depthCenter);
+                half3 finalColor = lerp(color.rgb, ApplyFog(half3(0.0, 0.0, 0.0), depthCenter), isInnerEdge * color.a);
                 return half4(finalColor, 1.0);
             }
             ENDHLSL

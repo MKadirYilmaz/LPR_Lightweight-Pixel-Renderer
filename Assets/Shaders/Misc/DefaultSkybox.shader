@@ -1,4 +1,4 @@
-Shader "Custom/CustomSkyboxPacked"
+Shader "Custom/DefaultSkybox"
 {
     Properties
     {
@@ -7,22 +7,23 @@ Shader "Custom/CustomSkyboxPacked"
     SubShader
     {
         Tags { "Queue"="Background" "RenderType"="Background" "PreviewType"="Skybox" }
-
+        ZWrite Off
+        Cull Off
+        ZTest LEqual
+        
         Pass
         {
             HLSLPROGRAM
-
+            
             #pragma vertex vert
             #pragma fragment frag
-
+            
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Assets/Shaders/Misc/CustomSkyboxCommon.hlsl"
-            #include "Assets/Shaders/Style/PixelArt/DepthCalculations.hlsl"
-
+            
             struct Attributes
             {
                 float4 positionOS : POSITION;
-                
             };
 
             struct Varyings
@@ -39,10 +40,10 @@ Shader "Custom/CustomSkyboxPacked"
                 return OUT;
             }
 
-            uint frag(Varyings IN) : SV_Target
+            half4 frag(Varyings IN) : SV_Target
             {
                 half4 color = GetSkyboxColor(IN.positionOS);
-                return PackRGBA(color, 0);
+                return color;
             }
             ENDHLSL
         }

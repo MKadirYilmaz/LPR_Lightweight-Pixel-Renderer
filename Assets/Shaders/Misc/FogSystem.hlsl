@@ -1,5 +1,5 @@
 #ifndef FOG_COLOR
-    #define FOG_COLOR half3(0.7, 0.7, 0.8) // Default fog color
+    #define FOG_COLOR half3(0.55, 0.55, 0.7) // Default fog color
 #endif
 #ifndef FOG_FALLOFF
     #define FOG_FALLOFF half(5.0)

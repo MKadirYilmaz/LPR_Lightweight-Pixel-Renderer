@@ -17,6 +17,9 @@ namespace Rendering
             [Tooltip("Global Post Process Material")]
             public Material globalPostProcessMaterial;
             
+            [Tooltip("Skybox Material")]
+            public Material skyboxMaterial;
+            
             [Range(0.01f, 1f), Tooltip("Render scale for the LPR pass.")]
             public float renderScale = 1.0f;
         }
@@ -25,6 +28,7 @@ namespace Rendering
 
         private LprOpaquePass mOpaquePass;
         private LprOpaquePostProcessPass mOpaquePostProcessPass;
+        private LprSkyboxPass mSkyboxPass;
         private LprTransparencyPass mTransparencyPass;
         private LprBlitPass mBlitPass;
         
@@ -45,10 +49,13 @@ namespace Rendering
 
         public override void Create()
         {
-            if (settings.opaqueDecodeMaterial == null || settings.globalPostProcessMaterial == null) return;
+            if (settings.opaqueDecodeMaterial == null || 
+                settings.globalPostProcessMaterial == null ||
+                settings.skyboxMaterial == null) return;
 
             mOpaquePass = new LprOpaquePass(settings.renderScale);
             mOpaquePostProcessPass = new LprOpaquePostProcessPass(settings.opaqueDecodeMaterial);
+            mSkyboxPass = new LprSkyboxPass(settings.skyboxMaterial);
             mTransparencyPass = new LprTransparencyPass();
             mBlitPass = new LprBlitPass(settings.globalPostProcessMaterial);
 
@@ -56,10 +63,13 @@ namespace Rendering
 
         public override void AddRenderPasses(ScriptableRenderer renderer, ref RenderingData renderingData)
         {
-            if (settings.opaqueDecodeMaterial == null || settings.globalPostProcessMaterial == null) return;
+            if (settings.opaqueDecodeMaterial == null || 
+                settings.globalPostProcessMaterial == null ||
+                settings.skyboxMaterial == null) return;
 
             renderer.EnqueuePass(mOpaquePass);
             renderer.EnqueuePass(mOpaquePostProcessPass);
+            renderer.EnqueuePass(mSkyboxPass);
             renderer.EnqueuePass(mTransparencyPass);
             renderer.EnqueuePass(mBlitPass);
         }
@@ -218,6 +228,48 @@ namespace Rendering
                 }
             }
         }
+        
+        class LprSkyboxPass : ScriptableRenderPass
+        {
+            private Material mSkyboxMaterial;
+
+            public LprSkyboxPass(Material mat)
+            {
+                mSkyboxMaterial = mat;
+                renderPassEvent = (RenderPassEvent)260;
+            }
+
+            private class SkyboxPassData
+            {
+                public TextureHandle ColorTarget;
+                public TextureHandle DepthTarget;
+                public Material Material;
+            }
+
+            public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
+            {
+                LprPassData lprData = frameData.Get<LprPassData>();
+                if (lprData == null || !lprData.ColorTarget.IsValid()) return;
+
+                using (var builder = renderGraph.AddRasterRenderPass<SkyboxPassData>("LPR Skybox Pass", out var passData))
+                {
+                    passData.ColorTarget   = lprData.ColorTarget;
+                    passData.DepthTarget   = lprData.DepthTarget;
+                    passData.Material      = mSkyboxMaterial;
+
+                    builder.SetRenderAttachment(passData.ColorTarget,   0);
+                    builder.SetRenderAttachmentDepth(passData.DepthTarget, AccessFlags.Read);
+
+                    builder.SetRenderFunc((SkyboxPassData data, RasterGraphContext context) =>
+                    {
+                        context.cmd.DrawProcedural(
+                            Matrix4x4.identity, data.Material, 0,
+                            MeshTopology.Triangles, 3, 1, null
+                        );
+                    });
+                }
+            }
+        }
 
         class LprTransparencyPass : ScriptableRenderPass
         {
@@ -225,7 +277,7 @@ namespace Rendering
             
             public LprTransparencyPass()
             {
-                renderPassEvent = (RenderPassEvent)260;
+                renderPassEvent = (RenderPassEvent)265;
             }
 
             private class TransparencyPassData
@@ -241,7 +293,6 @@ namespace Rendering
                 UniversalRenderingData renderingData = frameData.Get<UniversalRenderingData>();
                 LprPassData lprData = frameData.Get<LprPassData>();
                 
-                // Set up drawing and filtering settings to render only opaque objects with our custom shader pass
                 SortingSettings sortingSettings = new SortingSettings(cameraData.camera)
                 {
                     criteria = SortingCriteria.CommonTransparent
@@ -266,7 +317,7 @@ namespace Rendering
                     builder.UseRendererList(rendererList);
                     
                     builder.SetRenderAttachment(passData.SourceHandle, 0);
-                    builder.SetRenderAttachmentDepth(passData.DepthHandle);
+                    builder.SetRenderAttachmentDepth(passData.DepthHandle, AccessFlags.Read);
 
                     builder.SetRenderFunc((TransparencyPassData data, RasterGraphContext context) =>
                     {
