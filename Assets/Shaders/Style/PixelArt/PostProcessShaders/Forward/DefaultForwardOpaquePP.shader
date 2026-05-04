@@ -1,4 +1,4 @@
-Shader "Custom/DefaultPostProcess"
+Shader "Custom/DefaultForwardOpaquePP"
 {
     Properties
     {
@@ -22,61 +22,53 @@ Shader "Custom/DefaultPostProcess"
             #include "Assets/Shaders/Style/PixelArt/DepthCalculations.hlsl"
             #include "Assets/Shaders/Misc/FogSystem.hlsl"
             
+            FRAMEBUFFER_INPUT_HALF(0);
+            TEXTURE2D(_LPR_DepthTexture);
+            float _NormalOutlineThreshold;
 
             struct Attributes
             {
                 uint vertexID : SV_VertexID;
+                UNITY_VERTEX_INPUT_INSTANCE_ID
             };
-            
+
             struct Varyings
             {
-                float4 positionHCS : SV_POSITION;
-                float2 uv          : TEXCOORD0;
+                float4 positionCS : SV_POSITION;
+                float2 uv   : TEXCOORD0;
+                UNITY_VERTEX_OUTPUT_STEREO
             };
-            
-            Texture2D<half4> _BlitTexture;
-            Texture2D<half> _LPR_DepthTexture;
-            float _NormalOutlineThreshold;
-            
 
-            Varyings vert(Attributes IN)
+            Varyings vert(Attributes input)
             {
-                Varyings OUT;
-                
-                OUT.positionHCS = GetFullScreenTriangleVertexPosition(IN.vertexID);
-                OUT.uv  = GetFullScreenTriangleTexCoord(IN.vertexID);
-                
-                return OUT;
+                Varyings output;
+                UNITY_SETUP_INSTANCE_ID(input);
+                UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(output);
+
+                output.positionCS = GetFullScreenTriangleVertexPosition(input.vertexID);
+                output.uv  = GetFullScreenTriangleTexCoord(input.vertexID);
+
+                return output;
             }
 
             half4 frag(Varyings IN) : SV_Target
             {
-                
                 uint rtWidth, rtHeight;
-                _BlitTexture.GetDimensions(rtWidth, rtHeight);
-                int2 pixelCoord = int2(IN.uv * float2(rtWidth, rtHeight));
+                _LPR_DepthTexture.GetDimensions(rtWidth, rtHeight);
+                float2 texelSize = 1.0 / float2(rtWidth, rtHeight);
                 
-                half4 color = _BlitTexture.Load(int3(pixelCoord, 0));
+                half4 color = LOAD_FRAMEBUFFER_INPUT_X(0, IN.positionCS);
                 color.rgb = SmartQuantize(color.rgb, 32.0, 0.3, half3(1.0, 1.0, 1.0));
                 
-                float depthCenter = _LPR_DepthTexture.Load(int3(pixelCoord, 0));
+                float depthCenter = SAMPLE_TEXTURE2D(_LPR_DepthTexture, sampler_PointClamp, IN.uv);
                 float pDepthCenter = Linear01Depth(depthCenter, _ZBufferParams);
                 float uDepthCenter = lerp(pDepthCenter, 1.0 - depthCenter, unity_OrthoParams.w);
                 depthCenter = pow(uDepthCenter, DEPTH_POW);
-                #if defined(_RENDER_DEPTH)
-                    return half4(depthCenter, depthCenter, depthCenter, 1.0);
-                #endif
                 
-                if (pixelCoord.x <= 0 || pixelCoord.x >= rtWidth - 1 || pixelCoord.y <= 0 || pixelCoord.y >= rtHeight - 1)
-                {
-                    // Skip edge pixels to avoid out-of-bounds access
-                    return half4(ApplyFog(color.rgb, depthCenter), 1.0);
-                }
-                
-                float depthUp     = _LPR_DepthTexture.Load(int3(float2(pixelCoord.x ,clamp(pixelCoord.y + 1.0, 0.0, rtHeight)), 0));
-                float depthDown   = _LPR_DepthTexture.Load(int3(float2(pixelCoord.x ,clamp(pixelCoord.y - 1.0, 0.0, rtHeight)), 0));
-                float depthLeft   = _LPR_DepthTexture.Load(int3(float2(clamp(pixelCoord.x - 1.0, 0.0, rtWidth), pixelCoord.y), 0));
-                float depthRight  = _LPR_DepthTexture.Load(int3(float2(clamp(pixelCoord.x + 1.0, 0.0, rtWidth), pixelCoord.y), 0));
+                float depthUp     = SAMPLE_TEXTURE2D(_LPR_DepthTexture, sampler_PointClamp, IN.uv + int2(0, 1) * texelSize).r;
+                float depthDown   = SAMPLE_TEXTURE2D(_LPR_DepthTexture, sampler_PointClamp, IN.uv + int2(0, -1) * texelSize).r;
+                float depthLeft   = SAMPLE_TEXTURE2D(_LPR_DepthTexture, sampler_PointClamp, IN.uv + int2(-1, 0) * texelSize).r;
+                float depthRight  = SAMPLE_TEXTURE2D(_LPR_DepthTexture, sampler_PointClamp, IN.uv + int2(1, 0) * texelSize).r;
                 
                 float pDepthUp     = Linear01Depth(depthUp, _ZBufferParams);
                 float pDepthDown   = Linear01Depth(depthDown, _ZBufferParams);
@@ -93,15 +85,6 @@ Shader "Custom/DefaultPostProcess"
                 depthLeft   = pow(uDepthLeft, DEPTH_POW);
                 depthRight  = pow(uDepthRight, DEPTH_POW);
                 
-                #if defined(_RENDER_NORMALS)
-                        // Calculate the normal using central differences
-                        float dzdx = depthRight - depthLeft;
-                        float dzdy = depthUp - depthDown;
-                        // We can calculate normal texture here by with no additional texture fetches, using the depth values we already have.
-                        half3 normal = normalize(float3(dzdx, dzdy, 0.01));
-                        return half4(normal, 1.0); // Normal visualization for testing
-                    #endif
-                
                 float curveX = (depthLeft + depthRight) - (2.0 * depthCenter);
                 float curveY = (depthUp + depthDown) - (2.0 * depthCenter);
 
@@ -110,7 +93,7 @@ Shader "Custom/DefaultPostProcess"
                 isInnerEdge += step(_NormalOutlineThreshold, curveY);
                 isInnerEdge = saturate(isInnerEdge);
                 
-                half4 finalColor = lerp(color, half4(0.0, 0.0, 0.0, 0.0), isInnerEdge);
+                half4 finalColor = lerp(color, half4(0.0, 0.0, 0.0, 1.0), isInnerEdge * color.a);
                 
                 finalColor.rgb = ApplyFog(finalColor, depthCenter);
                 

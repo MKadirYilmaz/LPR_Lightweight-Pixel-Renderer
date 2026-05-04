@@ -7,8 +7,8 @@ Material:
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: M_DefaultPostProcess
-  m_Shader: {fileID: 4800000, guid: 13afcf6185e28a4458cfc859d854328b, type: 3}
+  m_Name: M_DefaultForwardGlobalPP
+  m_Shader: {fileID: 4800000, guid: 6a344ae781db2fc4290fba4755c275c2, type: 3}
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
   m_ValidKeywords: []
@@ -24,8 +24,7 @@ Material:
     serializedVersion: 3
     m_TexEnvs: []
     m_Ints: []
-    m_Floats:
-    - _NormalOutlineThreshold: 0.01
+    m_Floats: []
     m_Colors: []
   m_BuildTextureStacks: []
   m_AllowLocking: 1

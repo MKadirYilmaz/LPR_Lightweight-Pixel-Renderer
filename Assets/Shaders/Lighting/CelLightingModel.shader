@@ -3,7 +3,6 @@ Shader "Custom/CelLightingModel"
     Properties
     {
         _BaseMap("Base Map", 2D) = "white" {}
-        _ShadowLight ("Shadow Light", Range(0, 1)) = 0.1
     }
 
     SubShader
@@ -23,7 +22,6 @@ Shader "Custom/CelLightingModel"
             float4 _BaseMap_ST;
         CBUFFER_END
         
-        #define SHADOW_LIGHT _ShadowLight
         #include "Assets/Shaders/Lighting/CustomLighting.hlsl"
         #include "Assets/Shaders/Style/PixelArt/DepthCalculations.hlsl"
 
@@ -124,13 +122,24 @@ Shader "Custom/CelLightingModel"
             #pragma vertex vert
             #pragma fragment frag
 
-            uint frag(Varyings IN) : SV_Target0
+            struct FragOutput
             {
-                half4 color = SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, IN.uv);
+                half4 color0 : SV_Target0;
+                half4 color1 : SV_Target1;
+            };
+            
+            FragOutput frag(Varyings IN) : SV_Target0
+            {
+                FragOutput OUT;
+                OUT.color0 = SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, IN.uv);
                 float3 objectWorldPos = UNITY_MATRIX_M._m03_m13_m23;
                 float3 fragPos = IN.worldPos.xyz;
                 half3 modifiedNormal = NormalSpherelize(IN.normalWS, objectWorldPos, fragPos);
-                return PackRGBNormal(color.rgb, modifiedNormal, 1);
+                
+                half shaderID = 0.0;
+                OUT.color1 = half4(modifiedNormal, shaderID);
+                
+                return OUT;
             }
             ENDHLSL
         }

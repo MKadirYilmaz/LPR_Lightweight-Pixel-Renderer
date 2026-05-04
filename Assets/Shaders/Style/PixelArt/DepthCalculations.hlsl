@@ -256,3 +256,19 @@ float UnpackDepth(uint packedData)
     uint d = (packedData >> SHIFT_D) & MAX_D;
     return (float)d / (float)MAX_D;
 }
+
+float3 GetWorldPositionFromDepth(float rawDepth, float2 uv)
+{
+    return ComputeWorldSpacePosition(uv, rawDepth, UNITY_MATRIX_I_VP);
+}
+
+float ConvertCustomDepthToRawDepth(float depth)
+{
+    float rawDepth = pow(depth, 1.0 / DEPTH_POW);
+                
+    float zEye = rawDepth * (_ProjectionParams.z - _ProjectionParams.y) + _ProjectionParams.y;
+                
+    float pDepth = ((1.0 / zEye) - _ZBufferParams.w) / _ZBufferParams.z;
+    float oDepth = 1.0 - rawDepth;
+    return lerp(pDepth, oDepth, unity_OrthoParams.w);
+}

@@ -7,8 +7,8 @@ Material:
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: M_CustomSkyboxPacked
-  m_Shader: {fileID: 4800000, guid: ab5dee6de2a0de643a43e0343af1f791, type: 3}
+  m_Name: M_PackedDeferredGlobalPP
+  m_Shader: {fileID: 4800000, guid: 74f8c7f40691e8044a793e0766bd8f7c, type: 3}
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
   m_ValidKeywords: []

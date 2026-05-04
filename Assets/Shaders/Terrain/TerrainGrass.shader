@@ -122,7 +122,7 @@ Shader "Custom/TerrainGrass"
 
             half4 frag(Varyings IN) : SV_Target
             {
-                return ForwardSurfaceLighting(IN);
+                return half4(ForwardSurfaceLighting(IN).rgb, 0.0);
             }
             ENDHLSL
         }
@@ -153,11 +153,21 @@ Shader "Custom/TerrainGrass"
             #pragma vertex vert
             #pragma fragment frag
 
-            uint frag(Varyings IN) : SV_Target0
+            struct FragOutput
             {
-                half4 color = GrassColor(IN);
+                half4 color0 : SV_Target0;
+                half4 color1 : SV_Target1;
+            };
+            
+            FragOutput frag(Varyings IN) : SV_Target0
+            {
+                FragOutput OUT;
+                OUT.color0 = GrassColor(IN);
                 
-                return color;
+                half shaderID = 1.0;
+                OUT.color1 = half4(0.0, 1.0, 0.0, shaderID);
+                
+                return OUT;
             }
             ENDHLSL
         }

@@ -189,7 +189,13 @@ Shader "Custom/WindyTree"
             #pragma vertex vert
             #pragma fragment frag
 
-            uint frag(Varyings IN) : SV_Target0
+            struct FragOutput
+            {
+                half4 color0 : SV_Target0;
+                half4 color1 : SV_Target1;
+            };
+            
+            FragOutput frag(Varyings IN) : SV_Target0
             {
                 UNITY_SETUP_INSTANCE_ID(IN);
                 float2 uvMain = IN.uv * _MainTexture_ST.xy + _MainTexture_ST.zw;
@@ -197,10 +203,17 @@ Shader "Custom/WindyTree"
                 
                 clip(color.a - _Cutoff);
                 
+                FragOutput OUT;
+                OUT.color0 = color;
+                
                 float3 objectWorldPos = UNITY_MATRIX_M._m03_m13_m23;
                 float3 fragPos = IN.worldPos.xyz;
                 half3 modifiedNormal = NormalSpherelize(IN.normalWS, objectWorldPos, fragPos);
-                return PackRGBNormal(color.rgb * _ColorTint, modifiedNormal, 1);
+                
+                half shaderID = 0.0;
+                OUT.color1 = half4(modifiedNormal, shaderID);
+                
+                return OUT;
             }
             ENDHLSL
         }

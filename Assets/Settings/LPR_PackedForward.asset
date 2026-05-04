@@ -1,21 +1,5 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
---- !u!114 &-3227881923484124343
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: bcd79224efe3e9747b4ba33bd9e9909e, type: 3}
-  m_Name: LprDefaultRendererFeature
-  m_EditorClassIdentifier: Assembly-CSharp::LprDefaultRendererFeature
-  m_Active: 1
-  lprDefaultSettings:
-    opaquePostProcessMaterial: {fileID: 2100000, guid: f813e938373ede248b9bd69298d4908e, type: 2}
-    renderScale: 0.3125
 --- !u!114 &11400000
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -26,7 +10,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: de640fe3d0db1804a85f9fc8f5cadab6, type: 3}
-  m_Name: LPR_Basic
+  m_Name: LPR_PackedForward
   m_EditorClassIdentifier: Unity.RenderPipelines.Universal.Runtime::UnityEngine.Rendering.Universal.UniversalRendererData
   debugShaders:
     debugReplacementPS: {fileID: 4800000, guid: cf852408f2e174538bcd9b7fda1c5ae7, type: 3}
@@ -41,9 +25,8 @@ MonoBehaviour:
     probeSamplingDebugTexture: {fileID: 0}
     probeVolumeBlendStatesCS: {fileID: 0}
   m_RendererFeatures:
-  - {fileID: -3227881923484124343}
-  - {fileID: 1795163118473076549}
-  m_RendererFeatureMap: 49fbd21d7e4234d3455f785658b3e918
+  - {fileID: 1547959656536798218}
+  m_RendererFeatureMap: 0af4822e1b757b15
   m_UseNativeRenderPass: 0
   xrSystemData: {fileID: 0}
   postProcessData: {fileID: 0}
@@ -71,8 +54,8 @@ MonoBehaviour:
   m_DepthAttachmentFormat: 0
   m_DepthTextureFormat: 90
   m_AccurateGbufferNormals: 0
-  m_IntermediateTextureMode: 0
---- !u!114 &1795163118473076549
+  m_IntermediateTextureMode: 1
+--- !u!114 &1547959656536798218
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -81,14 +64,12 @@ MonoBehaviour:
   m_GameObject: {fileID: 0}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: b00045f12942b46c698459096c89274e, type: 3}
-  m_Name: FullScreenPassRendererFeature
-  m_EditorClassIdentifier: Unity.RenderPipelines.Universal.Runtime::UnityEngine.Rendering.Universal.FullScreenPassRendererFeature
-  m_Active: 0
-  injectionPoint: 550
-  fetchColorBuffer: 1
-  requirements: 0
-  passMaterial: {fileID: 2100000, guid: b4a369dc78a9bc74e8edd7835640efba, type: 2}
-  passIndex: 0
-  bindDepthStencilAttachment: 0
-  m_Version: 1
+  m_Script: {fileID: 11500000, guid: cdc00bad92d99f341a45ec76b6e60158, type: 3}
+  m_Name: LprPackedForwardRF
+  m_EditorClassIdentifier: Assembly-CSharp::LprPackedForwardRF
+  m_Active: 1
+  lprSettings:
+    opaquePostProcessMaterial: {fileID: 2100000, guid: 883ea6d0d9ddf3c4c8d62970986c8d34, type: 2}
+    globalPostProcessMaterial: {fileID: 2100000, guid: 89ca09f3972c27d4f9c9470b120995dc, type: 2}
+    skyboxMaterial: {fileID: 2100000, guid: edfa9b5c03dbdc14a911b18ead9ce4d4, type: 2}
+    renderScale: 0.3125

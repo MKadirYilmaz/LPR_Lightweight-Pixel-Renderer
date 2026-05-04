@@ -167,13 +167,24 @@ Shader "Terrain/TerrainUnlit"
             #pragma vertex vert
             #pragma fragment frag
 
-            uint frag(Varyings IN) : SV_Target0
+            struct FragOutput
             {
-                half4 color = TerrainColor(IN);
+                half4 color0 : SV_Target0;
+                half4 color1 : SV_Target1;
+            };
+            
+            FragOutput frag(Varyings IN) : SV_Target0
+            {
+                FragOutput OUT;
+                OUT.color0 = TerrainColor(IN);
                 float3 objectWorldPos = UNITY_MATRIX_M._m03_m13_m23;
                 float3 fragPos = IN.worldPos.xyz;
                 half3 modifiedNormal = NormalSpherelize(IN.normalWS, objectWorldPos, fragPos);
-                return PackRGBNormal(color.rgb, modifiedNormal, 1);
+                
+                half shaderID = 0.0;
+                OUT.color1 = half4(modifiedNormal, shaderID);
+                
+                return OUT;
             }
             ENDHLSL
         }

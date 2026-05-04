@@ -6,7 +6,7 @@ namespace Rendering
     using UnityEngine.Rendering.RenderGraphModule;
     using UnityEngine.Experimental.Rendering;
 
-    public class LprPackedRendererFeature : ScriptableRendererFeature
+    public class LprPackedDeferredRF : ScriptableRendererFeature
     {
         [System.Serializable]
         public class LprSettings
@@ -200,8 +200,7 @@ namespace Rendering
                     depthBufferBits = DepthBits.None,
                     msaaSamples = MSAASamples.None,
                     name = "LPR_ColorBuffer",
-                    clearBuffer = true,
-                    clearColor = Color.black
+                    clearBuffer = false
                 };
                 TextureHandle uintTexture = lprData.ColorTarget;
                 TextureHandle gBuffer0 = lprData.GBufferTarget;
