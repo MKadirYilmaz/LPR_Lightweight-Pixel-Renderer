@@ -70,7 +70,6 @@ Shader "Custom/PackedDeferredGlobalPP"
                 
                 half4 color = SAMPLE_TEXTURE2D(_BlitTexture, sampler_PointClamp, IN.uv);
                 int2 pixelCoord = int2(IN.uv * float2(rtWidth, rtHeight));
-                
                 float depthCenter;
                 float3 normalCenter = GetSafeGBufferData(_GBuffer0.Load(int3(pixelCoord, 0)), depthCenter);
                 #if defined(_RENDER_NORMALS)
@@ -81,7 +80,7 @@ Shader "Custom/PackedDeferredGlobalPP"
                     return half4(depthCenter, depthCenter, depthCenter, 1.0);
                 #endif
                 
-                if (pixelCoord.x <= 0 || pixelCoord.x >= rtWidth || pixelCoord.y <= 0 || pixelCoord.y >= rtHeight)
+                if (pixelCoord.x <= 0 || pixelCoord.x >= rtWidth - 1 || pixelCoord.y <= 0 || pixelCoord.y >= rtHeight - 1)
                 {
                     return half4(ApplyFog(color.rgb, depthCenter), 1.0);
                 }

@@ -164,9 +164,8 @@ Shader "Custom/TerrainGrass"
                 FragOutput OUT;
                 OUT.color0 = GrassColor(IN);
                 
-                half shaderID = 1.0;
+                half shaderID = 0.1;
                 OUT.color1 = half4(0.0, 1.0, 0.0, shaderID);
-                
                 return OUT;
             }
             ENDHLSL
@@ -191,7 +190,6 @@ Shader "Custom/TerrainGrass"
                 FragOutput OUT;
                 half4 color = GrassColor(IN);
                 OUT.color0 = PackLightPassBuffer(color.rgb, 1);
-                
                 OUT.color1 = PackDepthNormalGBuffer(GetDepthValue(IN.zEye, _ProjectionParams.y, _ProjectionParams.z), float3(0.0, 1.0, 0.0));
                 return OUT;
             }

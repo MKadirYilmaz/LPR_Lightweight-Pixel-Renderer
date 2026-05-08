@@ -17,7 +17,6 @@ Shader "Custom/PackedDeferredOpaquePP"
             #pragma vertex vert
             #pragma fragment frag
             #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE
-            #pragma multi_compile _ _DEFERRED_SHADING
             #pragma multi_compile _ _CUSTOM_LIGHTING
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
@@ -30,6 +29,10 @@ Shader "Custom/PackedDeferredOpaquePP"
             
             FRAMEBUFFER_INPUT_UINT(0);
             FRAMEBUFFER_INPUT_UINT(1);
+            
+            uniform int _LightCount;
+            uniform half4 _LightPositions[32];
+            uniform half3 _LightColors[32];
             
             struct Attributes
             {
@@ -56,19 +59,67 @@ Shader "Custom/PackedDeferredOpaquePP"
                 return output;
             }
             
-            half4 CalculateLightPass(uint shaderID, float3 worldPos, float3 normal, half3 color)
+            half3 CalculateLightPass(uint shaderID, float3 worldPos, float3 normal, Light light)
             {
-                float4 shadowCoord = TransformWorldToShadowCoord(worldPos); 
-                Light light = GetMainLight(shadowCoord);
                 switch (shaderID)
                 {
                 case 0u:
-                    return half4(color * CelLighting(normal, light), 1.0);
+                    return CelLighting(normal, light);
                 case 1u:
-                    return half4(color * GrassLighting(light), 0.0);
+                    return GrassLighting(light);
+                case 2u: // PBR Lighting
+                    half3 albedo = half3(1.0, 1.0, 1.0);
+                    half metallic = 0.0;
+                    half smoothness = 0.3;
+                    half alpha = 1.0;
+            
+                    BRDFData brdfData = (BRDFData)0;
+                    InitializeBRDFData(albedo, metallic, 0, smoothness, alpha, brdfData);
+            
+                    half3 viewDirectionWS = GetWorldSpaceNormalizeViewDir(worldPos);
+                    half3 normalWS = normalize(normal);
+            
+                    half3 pbrLighting = LightingPhysicallyBased(brdfData, light, normalWS, viewDirectionWS);
+                    half3 bakedGI = SampleSH(normalWS);
+                    half3 ambientLighting = GlobalIllumination(brdfData, bakedGI, 1.0, normalWS, viewDirectionWS);
+                    return half3(pbrLighting + ambientLighting);
                 default:
-                    return half4(0.0, 0.0, 0.0, 0.0);
+                    return half3(0.0, 0.0, 0.0);
                 }
+            }
+            
+            half3 CalculateAdditionalLights(uint shaderID, float3 worldPos, float3 normal)
+            {
+                half3 totalAdditionalLight = half3(0.0, 0.0, 0.0);
+                
+                for (int i = 0; i < _LightCount; i++)
+                {
+                    float3 lightPos = _LightPositions[i].xyz;
+                    float lightRange = _LightPositions[i].w;
+                    half3 lightColor = _LightColors[i].rgb;
+
+                    float3 lightDir = lightPos - worldPos;
+                    float distance = length(lightDir);
+
+                    float attenuation = 1.0 - max(distance, 0.001) / lightRange;
+                    if (attenuation <= 0.0) continue;
+                    
+                    attenuation *= attenuation;
+                    
+                    lightDir = normalize(lightDir);
+                    
+                    Light light;
+                    light.direction = lightDir;
+                    light.color = lightColor * attenuation;
+                    light.distanceAttenuation = attenuation;
+                    light.shadowAttenuation = 1.0;
+                    light.layerMask = 0xFF;
+                    
+                    totalAdditionalLight += CalculateLightPass(shaderID, worldPos, normal, light);
+                    
+                }
+
+                return totalAdditionalLight;
             }
             
             float3 GetSafeGBufferData(uint package, out float depth)
@@ -93,34 +144,21 @@ Shader "Custom/PackedDeferredOpaquePP"
                 float rawDeviceDepth = ConvertCustomDepthToRawDepth(depth);
                 
                 float3 worldPos = GetWorldPositionFromDepth(rawDeviceDepth, IN.uv);
-                half4 finalColor = half4(color, 1.0);
-                #if defined(_CUSTOM_LIGHTING)
-                    finalColor = CalculateLightPass(shaderID, worldPos, normal, color);
-                #else
-                    half3 albedo = finalColor.rgb;
-                    half metallic = 0.0;
-                    half smoothness = 0.0;
-                    half alpha = 1.0;
-            
-                    BRDFData brdfData;
-                    InitializeBRDFData(albedo, metallic, 0, smoothness, alpha, brdfData);
-            
-                    half3 viewDirectionWS = GetWorldSpaceNormalizeViewDir(worldPos);
-                    half3 normalWS = normalize(normal);
-            
-                    float4 shadowCoord = TransformWorldToShadowCoord(worldPos);
-                    Light light = GetMainLight(shadowCoord);
-                    light.distanceAttenuation = 1.0; // Somehow the distance attenuation is not working correctly in this context, so we set it to 1.0 to avoid darkening the result.
-            
-                    half3 pbrLighting = LightingPhysicallyBased(brdfData, light, normalWS, viewDirectionWS);
-                    half3 bakedGI = SampleSH(normalWS);
-                    half3 ambientLighting = GlobalIllumination(brdfData, bakedGI, 1.0, normalWS, viewDirectionWS);
-            
-                    finalColor.rgb = pbrLighting + ambientLighting;
-                #endif
                 
-                finalColor.rgb = ApplyFog(finalColor.rgb, depth);
-                return finalColor;
+                float4 shadowCoord = TransformWorldToShadowCoord(worldPos);
+                Light light = GetMainLight(shadowCoord);
+                
+                light.distanceAttenuation = 1.0;
+                
+                half3 mainLightDiffuse = CalculateLightPass(shaderID, worldPos, normal, light);
+                half3 additionalLightDiffuse = CalculateAdditionalLights(shaderID, worldPos, normal);
+                
+                color.rgb *= saturate(mainLightDiffuse + additionalLightDiffuse);
+                half alpha = (shaderID == 1u) ? 0.0 : 1.0; // Outline removal for grass shader
+                
+                
+                color.rgb = ApplyFog(color.rgb, depth);
+                return half4(color, alpha);
             }
             ENDHLSL
         }

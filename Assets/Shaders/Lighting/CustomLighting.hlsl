@@ -8,7 +8,7 @@
 #endif
 
 #ifndef SHADOW_LIGHT
-    #define SHADOW_LIGHT 0.1
+    #define SHADOW_LIGHT 0.05
 #endif
 
 #ifndef NORMAL_SPHERELIZE_STRENGTH

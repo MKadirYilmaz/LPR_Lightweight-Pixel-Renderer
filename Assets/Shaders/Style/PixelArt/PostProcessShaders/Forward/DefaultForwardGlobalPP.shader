@@ -7,7 +7,8 @@ Shader "Custom/DefaultForwardGlobalPP"
 
     SubShader
     {
-        Tags { "RenderType" = "Opaque" "RenderPipeline" = "UniversalPipeline" }
+        Tags { "RenderPipeline" = "UniversalPipeline" }
+        ZWrite Off Cull Off ZTest Always
 
         Pass
         {
@@ -49,7 +50,7 @@ Shader "Custom/DefaultForwardGlobalPP"
 
             half4 frag(Varyings IN) : SV_Target
             {
-                half4 color = SAMPLE_TEXTURE2D_X(_BlitTexture, sampler_PointClamp, IN.uv);
+                half4 color = SAMPLE_TEXTURE2D(_BlitTexture, sampler_PointClamp, IN.uv);
                 float depthCenter = SAMPLE_TEXTURE2D(_LPR_DepthTexture, sampler_PointClamp, IN.uv).r;
                 float pDepthCenter = Linear01Depth(depthCenter, _ZBufferParams);
                 float uDepthCenter = lerp(pDepthCenter, 1.0 - depthCenter, unity_OrthoParams.w);

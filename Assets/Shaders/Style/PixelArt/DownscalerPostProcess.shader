@@ -2,9 +2,9 @@ Shader "Custom/DownscalerPostProcess"
 {
     Properties
     {
-        _PixelScale ("Pixel Scale Factor", Range(1, 20)) = 4.0
         _NormalOutlineThreshold ("Outline Threshold", Range(0.0001, 0.01)) = 0.001
         _OutlineColor ("Outline Color", Color) = (0,0,0,1)
+        _ScreenDPI ("Screen DPI Params", Vector) = (96, 96, 0, 0)
     }
 
     SubShader
@@ -29,14 +29,18 @@ Shader "Custom/DownscalerPostProcess"
             #define FOG_FALLOFF half(5.0)
             #include "Assets/Shaders/Misc/FogSystem.hlsl"
             
-            float _PixelScale;
             float _NormalOutlineThreshold;
             half4 _OutlineColor;
+            
+            // x = Device DPI, y = Target DPI, z = unused, w = unused
+            float4 _ScreenDPI;
 
             half4 frag(Varyings IN) : SV_Target
             {
                 float2 uv = IN.texcoord;
-                float2 targetResolution = _ScreenParams.xy / max(_PixelScale, 1.0);
+                float2 screenSize = _ScreenParams.xy / _ScreenDPI.x;
+                float2 targetResolution = _ScreenDPI.y * screenSize;
+                
                 float2 texelSize = 1.0 / targetResolution; 
                 float2 pixelatedUV = (floor(uv * targetResolution) + 0.5) / targetResolution;
                 
@@ -78,7 +82,7 @@ Shader "Custom/DownscalerPostProcess"
                         // We can calculate normal texture here by with no additional texture fetches, using the depth values we already have.
                         half3 normal = normalize(float3(dzdx, dzdy, 0.01));
                         return half4(normal, 1.0); // Normal visualization for testing
-                    #endif
+                #endif
                 
                 float curveX = (depthLeft + depthRight) - (2.0 * depthCenter);
                 float curveY = (depthUp + depthDown) - (2.0 * depthCenter);
@@ -88,12 +92,11 @@ Shader "Custom/DownscalerPostProcess"
                 isInnerEdge += step(_NormalOutlineThreshold, curveY);
                 isInnerEdge = saturate(isInnerEdge);
                 
-                half4 finalColor = lerp(color, _OutlineColor, isInnerEdge);
+                half4 finalColor = lerp(color, _OutlineColor, isInnerEdge * color.a);
                 
                 finalColor.rgb = ApplyFog(finalColor, depthCenter);
                 
                 return finalColor;
-                return half4(depthCenter, depthCenter, depthCenter, 1.0);
             }
             ENDHLSL
         }

@@ -29,10 +29,11 @@ Material:
         m_Offset: {x: 0, y: 0}
     m_Ints: []
     m_Floats:
-    - _NormalOutlineThreshold: 0.0025
-    - _PixelScale: 3.240742
+    - _NormalOutlineThreshold: 0.005
+    - _PixelScale: 4
     m_Colors:
     - _BaseColor: {r: 1, g: 1, b: 1, a: 1}
     - _OutlineColor: {r: 0, g: 0, b: 0, a: 1}
+    - _ScreenDPI: {r: 120, g: 50, b: 0, a: 0}
   m_BuildTextureStacks: []
   m_AllowLocking: 1

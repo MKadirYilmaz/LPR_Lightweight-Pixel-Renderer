@@ -18,8 +18,8 @@ public class LprPackedForwardRF : ScriptableRendererFeature
         [Tooltip("Skybox Material")]
         public Material skyboxMaterial;
 
-        [Range(0.01f, 1f), Tooltip("Render scale for the LPR pass")]
-        public float renderScale = 1.0f;
+        [Range(5f, 100f), Tooltip("Target DPI")]
+        public float DPI = 40f;
     }
     
     public LprSettings lprSettings = new LprSettings();
@@ -48,7 +48,7 @@ public class LprPackedForwardRF : ScriptableRendererFeature
            lprSettings.globalPostProcessMaterial == null ||
            lprSettings.skyboxMaterial == null) return;
 
-        mOpaquePass = new LprOpaquePass(lprSettings.renderScale);
+        mOpaquePass = new LprOpaquePass(lprSettings.DPI);
         mOpaquePostProcessPass = new LprOpaquePostProcessPass(lprSettings.opaquePostProcessMaterial);
         mSkyboxPass = new LprSkyboxPass(lprSettings.skyboxMaterial);
         mTransparencyPass = new LprTransparencyPass();
@@ -70,12 +70,12 @@ public class LprPackedForwardRF : ScriptableRendererFeature
     
     class LprOpaquePass : ScriptableRenderPass
     {
-        private float mScale;
+        private float mTargetDpi;
         private static readonly ShaderTagId SShaderTagId = new ShaderTagId("LPRForwardPacked");
 
-        public LprOpaquePass(float scale)
+        public LprOpaquePass(float targetDpi)
         {
-            mScale = scale;
+            mTargetDpi = targetDpi;
             renderPassEvent = RenderPassEvent.BeforeRenderingOpaques;
         }
 
@@ -89,8 +89,13 @@ public class LprPackedForwardRF : ScriptableRendererFeature
             UniversalCameraData cameraData = frameData.Get<UniversalCameraData>();
             UniversalRenderingData renderingData = frameData.Get<UniversalRenderingData>();
             
-            int width = Mathf.Max(1, Mathf.RoundToInt(cameraData.cameraTargetDescriptor.width * mScale));
-            int height = Mathf.Max(1, Mathf.RoundToInt(cameraData.cameraTargetDescriptor.height * mScale));
+            float dpi = Screen.dpi;
+            if (dpi <= 0) dpi = 96;
+
+            Vector2 physicalSize = new Vector2(Screen.width / dpi, Screen.height / dpi);
+            
+            int width  = Mathf.RoundToInt(physicalSize.x * mTargetDpi);
+            int height = Mathf.RoundToInt(physicalSize.y * mTargetDpi);
 
             TextureDesc colorBufferDesc = new TextureDesc(width, height)
             {
@@ -145,7 +150,7 @@ public class LprPackedForwardRF : ScriptableRendererFeature
                 builder.UseRendererList(rendererList);
                 
                 builder.SetRenderAttachment(colorTarget, 0);
-                builder.SetRenderAttachmentDepth(hardwareDepthTarget, AccessFlags.Write);
+                builder.SetRenderAttachmentDepth(hardwareDepthTarget);
                 
                 builder.SetRenderFunc((OpaquePassData data, RasterGraphContext context) =>
                 {
@@ -168,7 +173,6 @@ public class LprPackedForwardRF : ScriptableRendererFeature
         private class OpaquePostProcessData
         {
             public TextureHandle SourceHandle;
-            public TextureHandle DepthHandle;
             public Material Material;
         }
 
@@ -196,7 +200,6 @@ public class LprPackedForwardRF : ScriptableRendererFeature
             using (var builder = renderGraph.AddRasterRenderPass<OpaquePostProcessData>("LPR Opaque Post Process", out var passData))
             {
                 passData.SourceHandle = lprData.ColorTarget;
-                passData.DepthHandle = lprData.DepthTarget;
                 
                 passData.Material = mOpaquePostProcessMaterial;
                 

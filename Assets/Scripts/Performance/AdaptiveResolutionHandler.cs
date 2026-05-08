@@ -1,15 +1,18 @@
 using System.Collections;
 using TMPro;
 using UnityEngine;
+using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
 using UnityEngine.UI;
 
 public class AdaptiveResolutionHandler : MonoBehaviour
 {
     [SerializeField] private Camera mainCamera;
-    [Range(0.01f, 1.0f)]
-    [SerializeField] private float resolutionScale = 0.3125f;
+    [Range(5f, 100f)]
+    [SerializeField] private float targetDPI = 40f;
     [SerializeField] private Slider resolutionSlider;
     [SerializeField] private TextMeshProUGUI resolutionText;
+    [SerializeField] private Material downscalerMaterial;
 
     private int lastScreenWidth;
     private int lastScreenHeight;
@@ -17,6 +20,7 @@ public class AdaptiveResolutionHandler : MonoBehaviour
     private IEnumerator Start()
     {
         yield return null;
+        UpdateMaterialDPISettings();
         ResizeRT();
     }
 
@@ -30,8 +34,14 @@ public class AdaptiveResolutionHandler : MonoBehaviour
 
     public void ResizeRT()
     {
-        int width  = Mathf.Max(1, Mathf.RoundToInt(Screen.width  * resolutionScale));
-        int height = Mathf.Max(1, Mathf.RoundToInt(Screen.height * resolutionScale));
+        UpdateMaterialDPISettings();
+        float dpi = Screen.dpi;
+        if (dpi <= 0) dpi = 96;
+
+        Vector2 physicalSize = new Vector2(Screen.width / dpi, Screen.height / dpi);
+            
+        int width  = Mathf.RoundToInt(physicalSize.x * targetDPI);
+        int height = Mathf.RoundToInt(physicalSize.y * targetDPI);
         
         resolutionText.text = $"{width}x{height}";
         
@@ -45,7 +55,12 @@ public class AdaptiveResolutionHandler : MonoBehaviour
 
     public void UpdateResolutionScale()
     {
-        resolutionScale = resolutionSlider.value;
         ResizeRT();
+    }
+
+    [ContextMenu("Update Material DPI Settings")]
+    public void UpdateMaterialDPISettings()
+    {
+        downscalerMaterial.SetVector("_ScreenDPI", new Vector4(Screen.dpi, targetDPI, 0, 0));
     }
 }

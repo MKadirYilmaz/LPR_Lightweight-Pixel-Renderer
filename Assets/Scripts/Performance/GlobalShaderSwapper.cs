@@ -10,6 +10,8 @@ public class GlobalShaderSwapper : MonoBehaviour
 
     [SerializeField] private TextMeshProUGUI lightingModelText;
     [SerializeField] private TextMeshProUGUI samplingTypeText;
+    [SerializeField] private TextMeshProUGUI shadingTypeText;
+    [SerializeField] private TextMeshProUGUI packingTypeText;
     
     [SerializeField] private AdaptiveResolutionHandler adaptiveResolutionHandler;
     
@@ -21,38 +23,53 @@ public class GlobalShaderSwapper : MonoBehaviour
 
     private bool bIsDownscaling = false;
     private bool bIsCustomShader = true;
+    private bool bIsDeferred = false;
+    private bool bIsPacked = true;
 
     private void Start()
     {
         if(globalURPAsset == null)
             globalURPAsset = GraphicsSettings.currentRenderPipeline as UniversalRenderPipelineAsset;
+        
+        if (mainCamera == null)
+            return;
         SwitchToCustomShader();
         SwitchToUpscaling();
-        SwitchToDeferredShading();
+        SwitchToForwardShading();
+        SwitchToPackedSystem();
     }
     
     private void OnEnable()
     {
+        if (mainCamera == null)
+            return;
         SwitchToCustomShader();
         SwitchToUpscaling();
-        SwitchToDeferredShading();
+        SwitchToForwardShading();
+        SwitchToPackedSystem();
     }
     
     void OnDisable()
     {
+        if (mainCamera == null)
+            return;
         SwitchToCustomShader();
         SwitchToUpscaling();
-        SwitchToDeferredShading();
+        SwitchToForwardShading();
+        SwitchToPackedSystem();
     }
 
     private void OnApplicationQuit()
     {
+        if (mainCamera == null)
+            return;
         SwitchToCustomShader();
         SwitchToUpscaling();
-        SwitchToDeferredShading();
+        SwitchToForwardShading();
+        SwitchToPackedSystem();
     }
 
-    public void ToggleCustomShader()
+    public void ToggleLightingType()
     {
         if (bIsCustomShader)
         {
@@ -74,6 +91,22 @@ public class GlobalShaderSwapper : MonoBehaviour
             SwitchToDownscaling();
     }
 
+    public void ToggleShadingType()
+    {
+        if(bIsDeferred)
+            SwitchToForwardShading();
+        else
+            SwitchToDeferredShading();
+    }
+
+    public void TogglePackedSystem()
+    {
+        if(bIsPacked)
+            SwitchToNormalSystem();
+        else
+            SwitchToPackedSystem();
+    }
+
     [ContextMenu("Switch To PBR Shader")]
     public void SwitchToPBRShader()
     {
@@ -93,37 +126,69 @@ public class GlobalShaderSwapper : MonoBehaviour
     [ContextMenu("Switch To Downscaling")]
     public void SwitchToDownscaling()
     {
-        if(defualtRendererData != null) defualtRendererData.rendererFeatures.Find(feature => feature is FullScreenPassRendererFeature)?.SetActive(true);
         bIsDownscaling = true;
         samplingTypeText.text = "Downscaling";
-        if(bIsCustomShader)
-            SwitchToCustomShader();
-        else
-            SwitchToPBRShader();
+        globalURPAsset.supportsCameraDepthTexture = true;
+        mainCamera.GetComponent<UniversalAdditionalCameraData>().SetRenderer(4);
         
     }
     [ContextMenu("Switch To Upscaling")]
     public void SwitchToUpscaling()
     {
-        if(defualtRendererData != null) defualtRendererData.rendererFeatures.Find(feature => feature is FullScreenPassRendererFeature)?.SetActive(false);
         bIsDownscaling = false;
         samplingTypeText.text = "Upscaling";
-        if(bIsCustomShader)
-            SwitchToCustomShader();
+        // Enable depth texture generation
+        globalURPAsset.supportsCameraDepthTexture = false;
+        if(bIsDeferred)
+            SwitchToDeferredShading();
         else
-            SwitchToPBRShader();
+            SwitchToForwardShading();
     }
 
     [ContextMenu("Switch to Deferred Shading")]
     public void SwitchToDeferredShading()
     {
-        Shader.EnableKeyword("_DEFERRED_SHADING");
+        if (bIsDownscaling)
+            return;
+        bIsDeferred = true;
+        mainCamera.GetComponent<UniversalAdditionalCameraData>().SetRenderer(bIsPacked ? 3 : 2);
+        shadingTypeText.text = "Deferred Shading";
     }
 
     [ContextMenu("Switch to Forward Shading")]
     public void SwitchToForwardShading()
     {
-        Shader.DisableKeyword("_DEFERRED_SHADING");
+        if (bIsDownscaling)
+            return;
+        bIsDeferred = false;
+        mainCamera.GetComponent<UniversalAdditionalCameraData>().SetRenderer(bIsPacked ? 1 : 0);
+        shadingTypeText.text = "Forward Shading";
+    }
+
+    [ContextMenu("Switch to Packed System")]
+    public void SwitchToPackedSystem()
+    {
+        if (bIsDownscaling)
+            return;
+        bIsPacked = true;
+        packingTypeText.text = "Packed";
+        if(bIsDeferred)
+            SwitchToDeferredShading();
+        else
+            SwitchToForwardShading();
+    }
+    
+    [ContextMenu("Switch to Normal System")]
+    public void SwitchToNormalSystem()
+    {
+        if (bIsDownscaling)
+            return;
+        bIsPacked = false;
+        packingTypeText.text = "Normal";
+        if(bIsDeferred)
+            SwitchToDeferredShading();
+        else
+            SwitchToForwardShading();
     }
     
 }

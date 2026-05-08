@@ -18,8 +18,8 @@ public class LprDefaultDeferredRF : ScriptableRendererFeature
         [Tooltip("Skybox Material")]
         public Material skyboxMaterial;
         
-        [Range(0.01f, 1f), Tooltip("Render scale for the LPR pass.")]
-        public float renderScale = 1.0f;
+        [Range(5f, 100f), Tooltip("Target DPI")]
+        public float DPI = 40f;
     }
 
     public LprSettings settings = new LprSettings();
@@ -51,7 +51,7 @@ public class LprDefaultDeferredRF : ScriptableRendererFeature
             settings.globalPostProcessMaterial == null ||
             settings.skyboxMaterial == null) return;
 
-        mOpaquePass = new LprOpaquePass(settings.renderScale);
+        mOpaquePass = new LprOpaquePass(settings.DPI);
         mOpaquePostProcessPass = new LprOpaquePostProcessPass(settings.opaquePostProcessMaterial);
         mSkyboxPass = new LprSkyboxPass(settings.skyboxMaterial);
         mTransparencyPass = new LprTransparencyPass();
@@ -75,12 +75,12 @@ public class LprDefaultDeferredRF : ScriptableRendererFeature
     // Stage 1: Render opaque objects to a uint buffer with a custom shader pass
     class LprOpaquePass : ScriptableRenderPass
     {
-        private float mScale;
+        private float mTargetDpi;
         private static readonly ShaderTagId SShaderTagId = new ShaderTagId("LPRDeferred");
 
-        public LprOpaquePass(float scale)
+        public LprOpaquePass(float targetDpi)
         {
-            mScale = scale;
+            mTargetDpi = targetDpi;
             renderPassEvent = RenderPassEvent.BeforeRenderingOpaques;
         }
 
@@ -93,9 +93,14 @@ public class LprDefaultDeferredRF : ScriptableRendererFeature
         {
             UniversalCameraData cameraData = frameData.Get<UniversalCameraData>();
             UniversalRenderingData renderingData = frameData.Get<UniversalRenderingData>();
+
+            float dpi = Screen.dpi;
+            if (dpi <= 0) dpi = 96;
+
+            Vector2 physicalSize = new Vector2(Screen.width / dpi, Screen.height / dpi);
             
-            int width = Mathf.Max(1, Mathf.RoundToInt(cameraData.cameraTargetDescriptor.width * mScale));
-            int height = Mathf.Max(1, Mathf.RoundToInt(cameraData.cameraTargetDescriptor.height * mScale));
+            int width  = Mathf.RoundToInt(physicalSize.x * mTargetDpi);
+            int height = Mathf.RoundToInt(physicalSize.y * mTargetDpi);
 
             TextureDesc uintDesc = new TextureDesc(width, height)
             {
@@ -115,6 +120,7 @@ public class LprDefaultDeferredRF : ScriptableRendererFeature
                 clearBuffer = true,
                 clearColor = Color.black
             };
+            
             TextureDesc hardwareDepthDesc = new TextureDesc(width, height)
             {
                 colorFormat = GraphicsFormat.None,
@@ -156,6 +162,9 @@ public class LprDefaultDeferredRF : ScriptableRendererFeature
                 
                 builder.SetRenderAttachment(uintTexture, 0);
                 builder.SetRenderAttachment(gBuffer0Texture, 1);
+                // Unfortunately we can't create more gBuffer texture because of mobile hardware limitations,
+                // so we need to bind the hardware depth buffer as a render attachment to be able to sample it in the post-process pass
+                
                 
                 builder.SetRenderAttachmentDepth(hardwareDepthTexture);
 
@@ -181,9 +190,12 @@ public class LprDefaultDeferredRF : ScriptableRendererFeature
         private class OpaquePPData
         {
             public TextureHandle SourceHandle;
-            public TextureHandle DepthHandle;
             public TextureHandle GBuffer0Handle;
+            public TextureHandle DepthHandle;
             public Material Material;
+            public Vector4[] LightPositions;
+            public Vector4[] LightColors;
+            public int LightCount;
         }
 
         public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
@@ -197,13 +209,43 @@ public class LprDefaultDeferredRF : ScriptableRendererFeature
             
             TextureHandle colorTexture = renderGraph.CreateTexture(temp);
 
+            UniversalRenderingData renderingData = frameData.Get<UniversalRenderingData>();
+                
+            int lightCount = 0;
+            var visibleLights = renderingData.cullResults.visibleLights;
+            int length = visibleLights.Length;
+                
+            if (visibleLights.Length > 32)
+            {
+                Debug.LogWarning("LPR Packed Deferred Renderer: More than 32 visible lights! Only the first 32 will be processed.");
+                length = 32;
+            }
+            Vector4[] m_LightPositions =  new Vector4[32];
+            Vector4[] m_LightColors =  new Vector4[32];
+
+            for (int i = 0; i < length; i++)
+            {
+                VisibleLight vl = visibleLights[i];
+                    
+                if (vl.lightType == LightType.Point)
+                {
+                    Vector3 pos = vl.localToWorldMatrix.GetColumn(3);
+                    m_LightPositions[lightCount] = new Vector4(pos.x, pos.y, pos.z, vl.range);
+                        
+                    m_LightColors[lightCount] = new Vector4(vl.finalColor.r, vl.finalColor.g, vl.finalColor.b, 1.0f);
+                    lightCount++;
+                }
+            }
+            
             using (var builder = renderGraph.AddRasterRenderPass<OpaquePPData>("LPR Opaque PP Pass", out var passData))
             {
                 passData.SourceHandle = lprData.ColorTarget;
                 passData.GBuffer0Handle = lprData.GBuffer0Target;
                 passData.DepthHandle = lprData.DepthTarget;
                 passData.Material = mDecodeMaterial;
-                
+                passData.LightPositions = m_LightPositions;
+                passData.LightColors = m_LightColors;
+                passData.LightCount = lightCount;
                 
                 builder.UseTexture(passData.SourceHandle);
                 builder.UseTexture(passData.GBuffer0Handle);
@@ -213,8 +255,13 @@ public class LprDefaultDeferredRF : ScriptableRendererFeature
 
                 builder.SetRenderFunc((OpaquePPData data, RasterGraphContext context) =>
                 {
-                    data.Material.SetTexture("_LPR_DepthTexture", data.DepthHandle);
+                    data.Material.SetVectorArray("_LightPositions", data.LightPositions);
+                    data.Material.SetVectorArray("_LightColors", data.LightColors);
+                    data.Material.SetInt("_LightCount", data.LightCount);
+                    
                     data.Material.SetTexture("_GBuffer0", data.GBuffer0Handle);
+                    data.Material.SetTexture("_LPR_DepthTexture", data.DepthHandle);
+                    
                     Blitter.BlitTexture(context.cmd, data.SourceHandle, new Vector4(1, 1, 0, 0), data.Material, 0);
                 });
             }
@@ -333,8 +380,8 @@ public class LprDefaultDeferredRF : ScriptableRendererFeature
         public class BlitPassData
         {
             public TextureHandle SourceHandle;
-            public TextureHandle DepthHandle;
             public TextureHandle GBuffer0Handle;
+            public TextureHandle DepthHandle;
             public Material Material;
         }
 

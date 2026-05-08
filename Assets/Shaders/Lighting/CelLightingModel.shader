@@ -18,7 +18,6 @@ Shader "Custom/CelLightingModel"
         #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
         
         CBUFFER_START(UnityPerMaterial)
-            half _ShadowLight;
             float4 _BaseMap_ST;
         CBUFFER_END
         
@@ -132,12 +131,17 @@ Shader "Custom/CelLightingModel"
             {
                 FragOutput OUT;
                 OUT.color0 = SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, IN.uv);
-                float3 objectWorldPos = UNITY_MATRIX_M._m03_m13_m23;
-                float3 fragPos = IN.worldPos.xyz;
-                half3 modifiedNormal = NormalSpherelize(IN.normalWS, objectWorldPos, fragPos);
+                #if defined(_CUSTOM_LIGHTING)
+                    half shaderID = 0.0;
+                    float3 objectWorldPos = UNITY_MATRIX_M._m03_m13_m23;
+                    float3 fragPos = IN.worldPos.xyz;
+                    half3 modifiedNormal = NormalSpherelize(IN.normalWS, objectWorldPos, fragPos);
+                    OUT.color1 = half4(modifiedNormal, half(shaderID));
+                #else
+                    half shaderID = 0.2;
+                    OUT.color1 = half4(IN.normalWS, shaderID);
+                #endif
                 
-                half shaderID = 0.0;
-                OUT.color1 = half4(modifiedNormal, shaderID);
                 
                 return OUT;
             }
@@ -162,12 +166,16 @@ Shader "Custom/CelLightingModel"
             {
                 FragOutput OUT;
                 half4 color = SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, IN.uv);
-                OUT.color0 = PackLightPassBuffer(color.rgb, 0);
-                
-                float3 objectWorldPos = UNITY_MATRIX_M._m03_m13_m23;
-                float3 fragPos = IN.worldPos.xyz;
-                half3 modifiedNormal = NormalSpherelize(IN.normalWS, objectWorldPos, fragPos);
-                OUT.color1 = PackDepthNormalGBuffer(GetDepthValue(IN.worldPos.w, _ProjectionParams.y, _ProjectionParams.z), modifiedNormal);
+                #if defined(_CUSTOM_LIGHTING)
+                    OUT.color0 = PackLightPassBuffer(color.rgb, 0);
+                    float3 objectWorldPos = UNITY_MATRIX_M._m03_m13_m23;
+                    float3 fragPos = IN.worldPos.xyz;
+                    half3 modifiedNormal = NormalSpherelize(IN.normalWS, objectWorldPos, fragPos);
+                    OUT.color1 = PackDepthNormalGBuffer(GetDepthValue(IN.worldPos.w, _ProjectionParams.y, _ProjectionParams.z), modifiedNormal);
+                #else
+                    OUT.color0 = PackLightPassBuffer(color.rgb, 2);
+                    OUT.color1 = PackDepthNormalGBuffer(GetDepthValue(IN.worldPos.w, _ProjectionParams.y, _ProjectionParams.z), IN.normalWS);
+                #endif
                 
                 return OUT;
             }

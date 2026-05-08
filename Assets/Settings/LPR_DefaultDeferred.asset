@@ -17,7 +17,7 @@ MonoBehaviour:
     opaquePostProcessMaterial: {fileID: 2100000, guid: 2d6cd3d0eb320a54197afbe77ea0029b, type: 2}
     globalPostProcessMaterial: {fileID: 2100000, guid: d416828ff033204499fbb9379e77cbb3, type: 2}
     skyboxMaterial: {fileID: 2100000, guid: edfa9b5c03dbdc14a911b18ead9ce4d4, type: 2}
-    renderScale: 0.3125
+    DPI: 50
 --- !u!114 &11400000
 MonoBehaviour:
   m_ObjectHideFlags: 0

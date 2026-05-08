@@ -6,8 +6,9 @@ Shader "Custom/PackedForwardOpaquePP"
 
     SubShader
     {
-        Tags { "RenderType" = "Opaque" "RenderPipeline" = "UniversalPipeline" }
-
+        Tags { "RenderPipeline" = "UniversalPipeline" }
+        ZWrite Off Cull Off ZTest Always
+        
         Pass
         {
             HLSLPROGRAM

@@ -1,3 +1,5 @@
+using Unity.Collections;
+
 namespace Rendering
 {
     using UnityEngine;
@@ -20,8 +22,8 @@ namespace Rendering
             [Tooltip("Skybox Material")]
             public Material skyboxMaterial;
             
-            [Range(0.01f, 1f), Tooltip("Render scale for the LPR pass.")]
-            public float renderScale = 1.0f;
+            [Range(5f, 100f), Tooltip("Target DPI")]
+            public float DPI = 40f;
         }
 
         public LprSettings settings = new LprSettings();
@@ -53,7 +55,7 @@ namespace Rendering
                 settings.globalPostProcessMaterial == null ||
                 settings.skyboxMaterial == null) return;
 
-            mOpaquePass = new LprOpaquePass(settings.renderScale);
+            mOpaquePass = new LprOpaquePass(settings.DPI);
             mOpaquePostProcessPass = new LprOpaquePostProcessPass(settings.opaqueDecodeMaterial);
             mSkyboxPass = new LprSkyboxPass(settings.skyboxMaterial);
             mTransparencyPass = new LprTransparencyPass();
@@ -77,12 +79,12 @@ namespace Rendering
         // Stage 1: Render opaque objects to a uint buffer with a custom shader pass
         class LprOpaquePass : ScriptableRenderPass
         {
-            private float mScale;
+            private float mTargetDpi;
             private static readonly ShaderTagId SShaderTagId = new ShaderTagId("LPRDeferredPacked");
 
-            public LprOpaquePass(float scale)
+            public LprOpaquePass(float targetDpi)
             {
-                mScale = scale;
+                mTargetDpi = targetDpi;
                 renderPassEvent = RenderPassEvent.BeforeRenderingOpaques;
             }
 
@@ -96,8 +98,13 @@ namespace Rendering
                 UniversalCameraData cameraData = frameData.Get<UniversalCameraData>();
                 UniversalRenderingData renderingData = frameData.Get<UniversalRenderingData>();
                 
-                int width = Mathf.Max(1, Mathf.RoundToInt(cameraData.cameraTargetDescriptor.width * mScale));
-                int height = Mathf.Max(1, Mathf.RoundToInt(cameraData.cameraTargetDescriptor.height * mScale));
+                float dpi = Screen.dpi;
+                if (dpi <= 0) dpi = 96;
+
+                Vector2 physicalSize = new Vector2(Screen.width / dpi, Screen.height / dpi);
+            
+                int width  = Mathf.RoundToInt(physicalSize.x * mTargetDpi);
+                int height = Mathf.RoundToInt(physicalSize.y * mTargetDpi);
 
                 TextureDesc uintDesc = new TextureDesc(width, height)
                 {
@@ -185,6 +192,9 @@ namespace Rendering
                 public TextureHandle SourceHandle;
                 public TextureHandle GBuffer0Handle;
                 public Material Material;
+                public Vector4[] LightPositions;
+                public Vector4[] LightColors;
+                public int LightCount;
             }
 
             public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
@@ -208,12 +218,43 @@ namespace Rendering
                 
                 lprData.ColorTarget =  colorTexture;
                 
+                UniversalRenderingData renderingData = frameData.Get<UniversalRenderingData>();
+                
+                int lightCount = 0;
+                var visibleLights = renderingData.cullResults.visibleLights;
+                int length = visibleLights.Length;
+                
+                if (visibleLights.Length > 32)
+                {
+                    Debug.LogWarning("LPR Packed Deferred Renderer: More than 32 visible lights! Only the first 32 will be processed.");
+                    length = 32;
+                }
+                Vector4[] m_LightPositions =  new Vector4[32];
+                Vector4[] m_LightColors =  new Vector4[32];
+
+                for (int i = 0; i < length; i++)
+                {
+                    VisibleLight vl = visibleLights[i];
+                    
+                    if (vl.lightType == LightType.Point)
+                    {
+                        Vector3 pos = vl.localToWorldMatrix.GetColumn(3);
+                        m_LightPositions[lightCount] = new Vector4(pos.x, pos.y, pos.z, vl.range);
+                        
+                        m_LightColors[lightCount] = new Vector4(vl.finalColor.r, vl.finalColor.g, vl.finalColor.b, 1.0f);
+                        lightCount++;
+                    }
+                }
 
                 using (var builder = renderGraph.AddRasterRenderPass<OpaquePPData>("LPR Opaque PP Pass", out var passData))
                 {
                     passData.SourceHandle = uintTexture;
                     passData.GBuffer0Handle = gBuffer0;
                     passData.Material = mDecodeMaterial;
+                    
+                    passData.LightPositions = m_LightPositions;
+                    passData.LightColors = m_LightColors;
+                    passData.LightCount = lightCount;
                     
                     builder.SetInputAttachment(passData.SourceHandle, 0);
                     builder.SetInputAttachment(passData.GBuffer0Handle, 1);
@@ -222,6 +263,9 @@ namespace Rendering
 
                     builder.SetRenderFunc((OpaquePPData data, RasterGraphContext context) =>
                     {
+                        data.Material.SetVectorArray("_LightPositions", data.LightPositions);
+                        data.Material.SetVectorArray("_LightColors", data.LightColors);
+                        data.Material.SetInt("_LightCount", data.LightCount);
                         context.cmd.DrawProcedural(Matrix4x4.identity, data.Material, 0, MeshTopology.Triangles, 3, 1, null);
                     });
                 }

@@ -177,13 +177,16 @@ Shader "Terrain/TerrainUnlit"
             {
                 FragOutput OUT;
                 OUT.color0 = TerrainColor(IN);
-                float3 objectWorldPos = UNITY_MATRIX_M._m03_m13_m23;
-                float3 fragPos = IN.worldPos.xyz;
-                half3 modifiedNormal = NormalSpherelize(IN.normalWS, objectWorldPos, fragPos);
-                
-                half shaderID = 0.0;
-                OUT.color1 = half4(modifiedNormal, shaderID);
-                
+                #if defined(_CUSTOM_LIGHTING)
+                    half shaderID = 0.0;
+                    float3 objectWorldPos = UNITY_MATRIX_M._m03_m13_m23;
+                    float3 fragPos = IN.worldPos.xyz;
+                    half3 modifiedNormal = NormalSpherelize(IN.normalWS, objectWorldPos, fragPos);
+                    OUT.color1 = half4(modifiedNormal, half(shaderID));
+                #else
+                    half shaderID = 0.2;
+                    OUT.color1 = half4(IN.normalWS, shaderID);
+                #endif
                 return OUT;
             }
             ENDHLSL
@@ -207,12 +210,16 @@ Shader "Terrain/TerrainUnlit"
             {
                 FragOutput OUT;
                 half4 color = TerrainColor(IN);
-                OUT.color0 = PackLightPassBuffer(color.rgb, 0);
-                
-                float3 objectWorldPos = UNITY_MATRIX_M._m03_m13_m23;
-                float3 fragPos = IN.worldPos.xyz;
-                half3 modifiedNormal = NormalSpherelize(IN.normalWS, objectWorldPos, fragPos);
-                OUT.color1 = PackDepthNormalGBuffer(GetDepthValue(IN.worldPos.w, _ProjectionParams.y, _ProjectionParams.z), modifiedNormal);
+                #if defined(_CUSTOM_LIGHTING)
+                    OUT.color0 = PackLightPassBuffer(color.rgb, 0);
+                    float3 objectWorldPos = UNITY_MATRIX_M._m03_m13_m23;
+                    float3 fragPos = IN.worldPos.xyz;
+                    half3 modifiedNormal = NormalSpherelize(IN.normalWS, objectWorldPos, fragPos);
+                    OUT.color1 = PackDepthNormalGBuffer(GetDepthValue(IN.worldPos.w, _ProjectionParams.y, _ProjectionParams.z), modifiedNormal);
+                #else
+                    OUT.color0 = PackLightPassBuffer(color.rgb, 2);
+                    OUT.color1 = PackDepthNormalGBuffer(GetDepthValue(IN.worldPos.w, _ProjectionParams.y, _ProjectionParams.z), IN.normalWS);
+                #endif
                 return OUT;
             }
             ENDHLSL
