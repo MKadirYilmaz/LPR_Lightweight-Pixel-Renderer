@@ -142,7 +142,7 @@ Shader "Custom/DefaultDeferredOpaquePP"
                 half3 mainLightDiffuse = CalculateLightPass(shaderID, worldPos, normal, light);
                 half3 additionalLightDiffuse = CalculateAdditionalLights(shaderID, worldPos, normal);
                 
-                color.rgb *= saturate(mainLightDiffuse + additionalLightDiffuse);
+                color.rgb *= mainLightDiffuse + additionalLightDiffuse;
                 color.a = (shaderID == 1) ? 0.0 : 1.0; // Outline removal for grass shader
                 
                 float pDepthCenter = Linear01Depth(rawDepth, _ZBufferParams);

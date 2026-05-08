@@ -17,9 +17,6 @@ public class GlobalShaderSwapper : MonoBehaviour
     
     [SerializeField] private UniversalRenderPipelineAsset globalURPAsset;
     
-    [SerializeField] private UniversalRendererData defualtRendererData;
-    [SerializeField] private UniversalRendererData packedRendererData;
-    
 
     private bool bIsDownscaling = false;
     private bool bIsCustomShader = true;

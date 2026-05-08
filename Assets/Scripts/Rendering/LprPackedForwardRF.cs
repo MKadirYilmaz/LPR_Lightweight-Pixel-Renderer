@@ -203,14 +203,13 @@ public class LprPackedForwardRF : ScriptableRendererFeature
                 
                 passData.Material = mOpaquePostProcessMaterial;
                 
-                // Framebuffer fetch
-                builder.SetInputAttachment(passData.SourceHandle, 0);
+                builder.UseTexture(passData.SourceHandle);
                 
                 builder.SetRenderAttachment(colorBuffer, 0);
                 
                 builder.SetRenderFunc((OpaquePostProcessData data, RasterGraphContext context) =>
                 {
-                    context.cmd.DrawProcedural(Matrix4x4.identity, data.Material, 0, MeshTopology.Triangles, 3, 1, null);
+                    Blitter.BlitTexture(context.cmd, data.SourceHandle, new Vector4(1, 1, 0, 0), data.Material, 0);
                 });
             }
             lprData.ColorTarget = colorBuffer;

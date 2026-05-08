@@ -2,7 +2,6 @@ Shader "Custom/PackedForwardGlobalPP"
 {
     Properties
     {
-        _NormalOutlineThreshold ("Normal Outline Threshold", Range(0.001, 0.2)) = 0.01
     }
 
     SubShader
@@ -19,7 +18,6 @@ Shader "Custom/PackedForwardGlobalPP"
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Assets/Shaders/Style/PixelArt/DepthCalculations.hlsl"
-            #include "Assets/Shaders/Misc/FogSystem.hlsl"
 
             TEXTURE2D_X(_BlitTexture);
             TEXTURE2D(_LPR_DepthTexture);
@@ -52,6 +50,15 @@ Shader "Custom/PackedForwardGlobalPP"
 
             half4 frag(Varyings IN) : SV_Target
             {
+                half4 color = SAMPLE_TEXTURE2D(_BlitTexture, sampler_PointClamp, IN.uv);
+                
+                float depthCenter = SAMPLE_TEXTURE2D(_LPR_DepthTexture, sampler_PointClamp, IN.uv).r;
+                float pDepthCenter = Linear01Depth(depthCenter, _ZBufferParams);
+                float uDepthCenter = lerp(pDepthCenter, 1.0 - depthCenter, unity_OrthoParams.w);
+                depthCenter = pow(uDepthCenter, DEPTH_POW);
+                
+                return color;
+                /*
                 uint rtWidth, rtHeight;
                 _LPR_DepthTexture.GetDimensions(rtWidth, rtHeight);
                 float2 texelSize = 1.0 / float2(rtWidth, rtHeight);
@@ -94,6 +101,7 @@ Shader "Custom/PackedForwardGlobalPP"
                 half4 finalColor = half4(0.0, 0.0, 0.0, 1.0);
                 finalColor.rgb = lerp(color.rgb, ApplyFog(half3(0.0, 0.0, 0.0), depthCenter), isInnerEdge * color.a);
                 return finalColor;
+                */
             }
             ENDHLSL
         }

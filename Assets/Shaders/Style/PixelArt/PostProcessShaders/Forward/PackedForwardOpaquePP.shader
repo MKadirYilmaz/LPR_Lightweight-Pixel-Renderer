@@ -2,6 +2,7 @@ Shader "Custom/PackedForwardOpaquePP"
 {
     Properties
     {
+        _NormalOutlineThreshold ("Normal Outline Threshold", Range(0.001, 0.2)) = 0.01
     }
 
     SubShader
@@ -20,7 +21,8 @@ Shader "Custom/PackedForwardOpaquePP"
             #include "Assets/Shaders/Style/PixelArt/DepthCalculations.hlsl"
             #include "Assets/Shaders/Misc/FogSystem.hlsl"
 
-            FRAMEBUFFER_INPUT_UINT(0);
+            Texture2D<uint> _BlitTexture;
+            float _NormalOutlineThreshold;
             
             struct Attributes
             {
@@ -46,15 +48,45 @@ Shader "Custom/PackedForwardOpaquePP"
 
                 return output;
             }
+            
+            float SafeUnpackDepth(uint package)
+            {
+                if (package == 0)
+                    return 1.0;
+                
+                return UnpackDepth(package);
+            }
 
             half4 frag(Varyings IN) : SV_Target
             {
-                uint outline;
-                float4 color = UnpackRGBA(LOAD_FRAMEBUFFER_INPUT(0, IN.positionCS), outline);
-                float depth = color.a;
+                uint rtWidth, rtHeight;
+                _BlitTexture.GetDimensions(rtWidth, rtHeight);
+                int2 pixelCoord = int2(IN.uv * float2(rtWidth, rtHeight));
                 
-                color.rgb = ApplyFog(color.rgb, depth);
-                return half4(color.rgb, (half)outline);
+                uint package = _BlitTexture.Load(int3(pixelCoord, 0));
+                
+                uint outline;
+                float4 color = UnpackRGBA(package, outline);
+                float depthCenter = (package == 0) ? 1.0 : color.a;
+                
+                
+                float depthUp     = SafeUnpackDepth(_BlitTexture.Load(int3(pixelCoord + int2(0, 1), 0)));
+                float depthDown   = SafeUnpackDepth(_BlitTexture.Load(int3(pixelCoord + int2(0, -1), 0)));
+                float depthLeft   = SafeUnpackDepth(_BlitTexture.Load(int3(pixelCoord + int2(-1, 0), 0)));
+                float depthRight  = SafeUnpackDepth(_BlitTexture.Load(int3(pixelCoord + int2(1, 0), 0)));
+                
+                float curveX = (depthLeft + depthRight) - (2.0 * depthCenter);
+                float curveY = (depthUp + depthDown) - (2.0 * depthCenter);
+
+                half isInnerEdge = 0;
+                isInnerEdge += step(_NormalOutlineThreshold, curveX);
+                isInnerEdge += step(_NormalOutlineThreshold, curveY);
+                isInnerEdge = saturate(isInnerEdge);
+                
+                half3 finalColor = lerp(color.rgb, half3(0.0, 0.0, 0.0), isInnerEdge * outline);
+                
+                finalColor = ApplyFog(finalColor, depthCenter);
+                return half4(finalColor, (half)outline);
             }
             ENDHLSL
         }

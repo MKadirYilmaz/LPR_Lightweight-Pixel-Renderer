@@ -22,7 +22,7 @@ Shader "Custom/DefaultForwardOpaquePP"
             #include "Assets/Shaders/Style/PixelArt/DepthCalculations.hlsl"
             #include "Assets/Shaders/Misc/FogSystem.hlsl"
             
-            FRAMEBUFFER_INPUT_HALF(0);
+            TEXTURE2D_X(_BlitTexture);
             TEXTURE2D(_LPR_DepthTexture);
             float _NormalOutlineThreshold;
 
@@ -57,7 +57,7 @@ Shader "Custom/DefaultForwardOpaquePP"
                 _LPR_DepthTexture.GetDimensions(rtWidth, rtHeight);
                 float2 texelSize = 1.0 / float2(rtWidth, rtHeight);
                 
-                half4 color = LOAD_FRAMEBUFFER_INPUT_X(0, IN.positionCS);
+                half4 color = SAMPLE_TEXTURE2D_X(_BlitTexture, sampler_PointClamp, IN.uv);
                 color.rgb = SmartQuantize(color.rgb, 32.0, 0.3, half3(1.0, 1.0, 1.0));
                 
                 float depthCenter = SAMPLE_TEXTURE2D(_LPR_DepthTexture, sampler_PointClamp, IN.uv);

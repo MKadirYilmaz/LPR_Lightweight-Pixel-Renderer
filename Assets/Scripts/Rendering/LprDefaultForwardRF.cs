@@ -184,23 +184,21 @@ public class LprDefaultForwardRF : ScriptableRendererFeature
             LprPassData lprData = frameData.Get<LprPassData>();
 
             TextureDesc temp = lprData.ColorTarget.GetDescriptor(renderGraph);
-            temp.name = "LPR_PColorBuffer";
+            temp.name = "LPR_pColorBuffer";
             temp.clearBuffer = false;
 
             TextureHandle pColorBuffer = renderGraph.CreateTexture(temp);
             
             if(!lprData.ColorTarget.IsValid() || !lprData.DepthTarget.IsValid()) return;
 
-            using (var builder = renderGraph.AddRasterRenderPass<OpaquePostProcessData>("LPR Post Process Blit", out var passData))
+            using (var builder = renderGraph.AddRasterRenderPass<OpaquePostProcessData>("LPR Opaque PP", out var passData))
             {
                 passData.SourceHandle = lprData.ColorTarget;
                 passData.DepthHandle = lprData.DepthTarget;
                 
                 passData.Material = mOpaquePostProcessMaterial;
                 
-                // Framebuffer fetch
-                builder.SetInputAttachment(passData.SourceHandle, 0);
-                // We can't use framebuffer fetch with depth textures.
+                builder.UseTexture(passData.SourceHandle);
                 builder.UseTexture(passData.DepthHandle);
                 
                 builder.SetRenderAttachment(pColorBuffer, 0);
@@ -208,7 +206,7 @@ public class LprDefaultForwardRF : ScriptableRendererFeature
                 builder.SetRenderFunc((OpaquePostProcessData data, RasterGraphContext context) =>
                 {
                     data.Material.SetTexture("_LPR_DepthTexture", data.DepthHandle);
-                    context.cmd.DrawProcedural(Matrix4x4.identity, data.Material, 0, MeshTopology.Triangles, 3, 1, null);
+                    Blitter.BlitTexture(context.cmd, data.SourceHandle, new Vector4(1, 1, 0, 0), data.Material, 0);
                 });
             }
             lprData.ColorTarget = pColorBuffer;

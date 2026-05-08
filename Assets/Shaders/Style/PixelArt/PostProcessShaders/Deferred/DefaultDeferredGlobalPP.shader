@@ -99,10 +99,8 @@ Shader "Custom/DefaultDeferredGlobalPP"
                 isInnerEdge += step(_NormalOutlineThreshold, curveY);
                 isInnerEdge = saturate(isInnerEdge);
                 
-                color = lerp(color, half4(0.0, 0.0, 0.0, 1.0), isInnerEdge * color.a);
-                
-                color.rgb = ApplyFog(color.rgb, depthCenter);
-                return color;
+                half3 finalColor = lerp(color.rgb, ApplyFog(half3(0.0, 0.0, 0.0), depthCenter), isInnerEdge * color.a);
+                return half4(finalColor, 1.0);
             }
             ENDHLSL
         }
