@@ -25,7 +25,7 @@ Material:
     m_TexEnvs: []
     m_Ints: []
     m_Floats:
-    - _NormalOutlineThreshold: 0.0025
+    - _NormalOutlineThreshold: 0.005
     m_Colors: []
   m_BuildTextureStacks: []
   m_AllowLocking: 1

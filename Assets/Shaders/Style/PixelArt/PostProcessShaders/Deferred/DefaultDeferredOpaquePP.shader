@@ -2,6 +2,7 @@ Shader "Custom/DefaultDeferredOpaquePP"
 {
     Properties
     {
+        _NormalOutlineThreshold ("Normal Outline Threshold", Range(0.001, 0.2)) = 0.01
     }
 
     SubShader
@@ -33,6 +34,8 @@ Shader "Custom/DefaultDeferredOpaquePP"
             uniform int _LightCount;
             uniform half4 _LightPositions[32];
             uniform half3 _LightColors[32];
+            
+            float _NormalOutlineThreshold;
             
             struct Attributes
             {
@@ -124,6 +127,10 @@ Shader "Custom/DefaultDeferredOpaquePP"
 
             half4 frag(Varyings IN) : SV_Target
             {
+                uint rtWidth, rtHeight;
+                _BlitTexture.GetDimensions(rtWidth, rtHeight);
+                float2 texelSize = 1.0 / float2(rtWidth, rtHeight);
+                
                 half4 color = SAMPLE_TEXTURE2D(_BlitTexture, sampler_PointClamp, IN.uv);
                 half4 gBuffer = SAMPLE_TEXTURE2D(_GBuffer0, sampler_PointClamp, IN.uv);
                 
@@ -147,9 +154,39 @@ Shader "Custom/DefaultDeferredOpaquePP"
                 
                 float pDepthCenter = Linear01Depth(rawDepth, _ZBufferParams);
                 float uDepthCenter = lerp(pDepthCenter, 1.0 - rawDepth, unity_OrthoParams.w);
-                rawDepth = pow(uDepthCenter, DEPTH_POW);
+                float depthCenter = pow(uDepthCenter, DEPTH_POW);
                 
-                color.rgb = ApplyFog(color.rgb, rawDepth);
+                float depthUp     = SAMPLE_TEXTURE2D(_LPR_DepthTexture, sampler_PointClamp, IN.uv + int2(0, 1) * texelSize).r;
+                float depthDown   = SAMPLE_TEXTURE2D(_LPR_DepthTexture, sampler_PointClamp, IN.uv + int2(0, -1) * texelSize).r;
+                float depthLeft   = SAMPLE_TEXTURE2D(_LPR_DepthTexture, sampler_PointClamp, IN.uv + int2(-1, 0) * texelSize).r;
+                float depthRight  = SAMPLE_TEXTURE2D(_LPR_DepthTexture, sampler_PointClamp, IN.uv + int2(1, 0) * texelSize).r;
+                
+                float pDepthUp     = Linear01Depth(depthUp, _ZBufferParams);
+                float pDepthDown   = Linear01Depth(depthDown, _ZBufferParams);
+                float pDepthLeft   = Linear01Depth(depthLeft, _ZBufferParams);
+                float pDepthRight  = Linear01Depth(depthRight, _ZBufferParams);
+                
+                float uDepthUp    = lerp(pDepthUp, 1.0 - depthUp, unity_OrthoParams.w);
+                float uDepthDown  = lerp(pDepthDown, 1.0 - depthDown, unity_OrthoParams.w);
+                float uDepthLeft  = lerp(pDepthLeft, 1.0 - depthLeft, unity_OrthoParams.w);
+                float uDepthRight = lerp(pDepthRight, 1.0 - depthRight, unity_OrthoParams.w);
+                
+                depthUp     = pow(uDepthUp, DEPTH_POW);
+                depthDown   = pow(uDepthDown, DEPTH_POW);
+                depthLeft   = pow(uDepthLeft, DEPTH_POW);
+                depthRight  = pow(uDepthRight, DEPTH_POW);
+                
+                float curveX = (depthLeft + depthRight) - (2.0 * depthCenter);
+                float curveY = (depthUp + depthDown) - (2.0 * depthCenter);
+
+                half isInnerEdge = 0;
+                isInnerEdge += step(_NormalOutlineThreshold, curveX);
+                isInnerEdge += step(_NormalOutlineThreshold, curveY);
+                isInnerEdge = saturate(isInnerEdge);
+                
+                color.rgb = lerp(color.rgb, half3(0.0, 0.0, 0.0), isInnerEdge * color.a);
+                
+                color.rgb = ApplyFog(color.rgb, depthCenter);
                 return color;
             }
             ENDHLSL

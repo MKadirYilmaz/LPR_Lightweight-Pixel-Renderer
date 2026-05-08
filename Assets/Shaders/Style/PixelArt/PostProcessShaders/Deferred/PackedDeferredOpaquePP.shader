@@ -2,7 +2,7 @@ Shader "Custom/PackedDeferredOpaquePP"
 {
     Properties
     {
-            
+        _NormalOutlineThreshold ("Normal Outline Threshold", Range(0.001, 0.2)) = 0.01
     }
 
     SubShader
@@ -27,12 +27,14 @@ Shader "Custom/PackedDeferredOpaquePP"
             #include "Assets/Shaders/Misc/FogSystem.hlsl"
 
             
-            FRAMEBUFFER_INPUT_UINT(0);
-            FRAMEBUFFER_INPUT_UINT(1);
+            Texture2D<uint> _BlitTexture;
+            Texture2D<uint> _GBuffer0;
             
             uniform int _LightCount;
             uniform half4 _LightPositions[32];
             uniform half3 _LightColors[32];
+            
+            float _NormalOutlineThreshold;
             
             struct Attributes
             {
@@ -131,10 +133,24 @@ Shader "Custom/PackedDeferredOpaquePP"
                 return UnpackDepthNormalGBuffer(package, depth);
             }
             
+            float3 GetSafeNextGBufferData(uint package, out float depth)
+            {
+                if (package == 0u)
+                {
+                    depth = 1.0;
+                    return float3(0.0, 1.0, 0.0);
+                }
+                return UnpackDepthNormalGBuffer(package, depth);
+            }
+            
             half4 frag(Varyings IN) : SV_Target
             {
-                uint colorPackage = LOAD_FRAMEBUFFER_INPUT(0, IN.positionCS.xy).x;
-                uint gBufferPackage = LOAD_FRAMEBUFFER_INPUT(1, IN.positionCS.xy).x;
+                uint rtWidth, rtHeight;
+                _BlitTexture.GetDimensions(rtWidth, rtHeight);
+                int2 pixelCoord = int2(IN.uv * float2(rtWidth, rtHeight));
+                
+                uint colorPackage = _BlitTexture.Load(int3(pixelCoord, 0));
+                uint gBufferPackage = _GBuffer0.Load(int3(pixelCoord, 0));
                 
                 uint shaderID;
                 half3 color = UnpackLightPassBuffer(colorPackage, shaderID);
@@ -154,11 +170,38 @@ Shader "Custom/PackedDeferredOpaquePP"
                 half3 additionalLightDiffuse = CalculateAdditionalLights(shaderID, worldPos, normal);
                 
                 color.rgb *= mainLightDiffuse + additionalLightDiffuse;
-                half alpha = (shaderID == 1u) ? 0.0 : 1.0; // Outline removal for grass shader
                 
                 
-                color.rgb = ApplyFog(color.rgb, depth);
-                return half4(color, alpha);
+                if (pixelCoord.x <= 0 || pixelCoord.x >= rtWidth - 1 || pixelCoord.y <= 0 || pixelCoord.y >= rtHeight - 1)
+                {
+                    return half4(ApplyFog(color.rgb, depth), 1.0);
+                }
+                
+                float depthUp;
+                float depthDown;
+                float depthLeft;
+                float depthRight;
+                
+                float3 normalUp     = GetSafeNextGBufferData(_GBuffer0.Load(int3(pixelCoord + int2(0, 1), 0)), depthUp);
+                float3 normalDown   = GetSafeNextGBufferData(_GBuffer0.Load(int3(pixelCoord + int2(0, -1), 0)), depthDown);
+                float3 normalLeft   = GetSafeNextGBufferData(_GBuffer0.Load(int3(pixelCoord + int2(-1, 0), 0)), depthLeft);
+                float3 normalRight  = GetSafeNextGBufferData(_GBuffer0.Load(int3(pixelCoord + int2(1, 0), 0)), depthRight);
+                
+                // Calculate curvature using the second derivative (Laplacian) of the depth
+                float curveX = (depthLeft + depthRight) - (2.0 * depth);
+                float curveY = (depthUp + depthDown) - (2.0 * depth);
+                
+                // Determine if the pixel is an inner edge based on curvature thresholds
+                half isInnerEdge = 0;
+                isInnerEdge += step(_NormalOutlineThreshold, curveX);
+                isInnerEdge += step(_NormalOutlineThreshold, curveY);
+                isInnerEdge = saturate(isInnerEdge);
+                
+                half outline = (shaderID == 1u) ? 0.0 : 1.0; // Outline removal for grass shader
+                color.rgb = lerp(color.rgb, half3(0.0, 0.0, 0.0), isInnerEdge * outline);
+                
+                color = ApplyFog(color, depth);
+                return half4(color, 1.0);
             }
             ENDHLSL
         }

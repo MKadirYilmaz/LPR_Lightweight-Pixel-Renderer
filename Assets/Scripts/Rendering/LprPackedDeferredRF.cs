@@ -256,8 +256,8 @@ namespace Rendering
                     passData.LightColors = m_LightColors;
                     passData.LightCount = lightCount;
                     
-                    builder.SetInputAttachment(passData.SourceHandle, 0);
-                    builder.SetInputAttachment(passData.GBuffer0Handle, 1);
+                    builder.UseTexture(passData.SourceHandle);
+                    builder.UseTexture(passData.GBuffer0Handle);
                     
                     builder.SetRenderAttachment(colorTexture, 0);
 
@@ -266,7 +266,8 @@ namespace Rendering
                         data.Material.SetVectorArray("_LightPositions", data.LightPositions);
                         data.Material.SetVectorArray("_LightColors", data.LightColors);
                         data.Material.SetInt("_LightCount", data.LightCount);
-                        context.cmd.DrawProcedural(Matrix4x4.identity, data.Material, 0, MeshTopology.Triangles, 3, 1, null);
+                        data.Material.SetTexture("_GBuffer0", data.GBuffer0Handle);
+                        Blitter.BlitTexture(context.cmd, data.SourceHandle, new Vector4(1, 1, 0, 0), data.Material, 0);
                     });
                 }
             }
