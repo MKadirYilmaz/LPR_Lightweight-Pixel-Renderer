@@ -78,37 +78,55 @@ Shader "Custom/TerrainGrass"
                 return tColor;
             }
             
-            half4 ForwardSurfaceLighting(Varyings IN)
+            half3 ForwardSurfaceLighting(Light light, float3 worldPos, float3 normal)
+        {
+            #if defined(_CUSTOM_LIGHTING)
+                //float3 objectWorldPos = UNITY_MATRIX_M._m03_m13_m23;
+                
+                //half3 modifiedNormal = NormalSpherelize(normal, objectWorldPos, worldPos);
+                
+                return GrassLighting(light);
+            #else
+                half3 albedo = half3(1.0, 1.0, 1.0);
+                half metallic = 0.0;
+                half smoothness = 0.3;
+                half alpha = 1.0;
+        
+                BRDFData brdfData = (BRDFData)0;
+                InitializeBRDFData(albedo, metallic, 0, smoothness, alpha, brdfData);
+        
+                half3 viewDirectionWS = GetWorldSpaceNormalizeViewDir(worldPos);
+                half3 normalWS = normalize(normal);
+        
+                half3 pbrLighting = LightingPhysicallyBased(brdfData, light, normalWS, viewDirectionWS);
+                half3 bakedGI = SampleSH(normalWS);
+                half3 ambientLighting = GlobalIllumination(brdfData, bakedGI, 1.0, normalWS, viewDirectionWS);
+                return half3(pbrLighting + ambientLighting);
+            #endif
+        }
+        
+        half4 ForwardLightLoop(Varyings IN)
+        {
+            float4 color = GrassColor(IN);
+            half3 normal = half3(0.0, 1.0, 0.0);    
+            half3 mainDiffuse = 0;
+            half3 additionalDiffuse = 0;
+            
+            float4 shadowCoord = TransformWorldToShadowCoord(IN.worldPos.xyz);
+            Light mainLight = GetMainLight(shadowCoord);
+            mainDiffuse = ForwardSurfaceLighting(mainLight, IN.worldPos.xyz, normal);
+            
+            int additionalLightCount = GetAdditionalLightsCount();
+            
+            for (int i = 0; i < additionalLightCount; i++)
             {
-                half4 color = GrassColor(IN);
-                float3 worldNormal = float3(0, 1, 0); // Assuming grass blades are vertical. For more complex shapes, you would need to calculate the normal based on vertex data.
-                
-                #if defined(_CUSTOM_LIGHTING)
-                    float4 shadowCoord = TransformWorldToShadowCoord(IN.worldPos);
-                    Light light = GetMainLight(shadowCoord);
-                
-                    return half4(color.rgb * GrassLighting(light), color.a);
-                #else
-                    SurfaceData surfaceData = (SurfaceData)0;
-                    surfaceData.albedo = color.rgb;
-                    surfaceData.alpha = color.a;
-                    surfaceData.metallic = 0.0;     
-                    surfaceData.smoothness = 0.0;   
-                    surfaceData.normalTS = float3(0, 0, 1);
-                    surfaceData.emission = 0;
-                    surfaceData.occlusion = 1;
-                
-                    InputData inputData = (InputData)0;
-                    inputData.positionWS = IN.worldPos.xyz;
-                    inputData.normalWS = float3(0.0, 1.0, 0.0);
-                    inputData.viewDirectionWS = GetWorldSpaceNormalizeViewDir(IN.worldPos.xyz);
-                    inputData.shadowCoord = TransformWorldToShadowCoord(IN.worldPos.xyz);
-                    inputData.bakedGI = SampleSH(inputData.normalWS);
-                    inputData.shadowMask = half4(1, 1, 1, 1);
-                
-                    return UniversalFragmentPBR(inputData, surfaceData);
-                #endif
+                Light additionalLight = GetAdditionalLight(i, IN.worldPos.xyz);
+                additionalDiffuse += ForwardSurfaceLighting(additionalLight, IN.worldPos.xyz, normal);
             }
+            
+            return half4(color.rgb * (mainDiffuse + additionalDiffuse), color.a);
+            
+        }
         ENDHLSL
         
         Pass
@@ -122,7 +140,7 @@ Shader "Custom/TerrainGrass"
 
             half4 frag(Varyings IN) : SV_Target
             {
-                return half4(ForwardSurfaceLighting(IN).rgb, 0.0);
+                return half4(ForwardLightLoop(IN).rgb, 0.0);
             }
             ENDHLSL
         }
@@ -138,7 +156,7 @@ Shader "Custom/TerrainGrass"
 
             uint frag(Varyings IN) : SV_Target
             {
-                half4 color = ForwardSurfaceLighting(IN);
+                half4 color = ForwardLightLoop(IN);
                 color.a = GetDepthValue(IN.zEye, _ProjectionParams.y, _ProjectionParams.z);
                 return PackRGBA(color, 0);
             }

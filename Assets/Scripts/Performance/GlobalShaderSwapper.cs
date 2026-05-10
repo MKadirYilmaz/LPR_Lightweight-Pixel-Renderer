@@ -123,6 +123,8 @@ public class GlobalShaderSwapper : MonoBehaviour
     [ContextMenu("Switch To Downscaling")]
     public void SwitchToDownscaling()
     {
+        if(bIsDeferred)
+            return;
         bIsDownscaling = true;
         samplingTypeText.text = "Downscaling";
         globalURPAsset.supportsCameraDepthTexture = true;

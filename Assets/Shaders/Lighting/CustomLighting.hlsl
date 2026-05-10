@@ -38,12 +38,14 @@ half3 ShadowlessCelLighting(float3 normal, Light light)
 {
     half NdotL = dot(normal, light.direction);
     half lX = pow((NdotL + 1.0) * 0.5, SHADOW_OFFSET); // Adjust the light intensity based on the angle between the normal and the light direction, and apply a power function to create a sharper transition between light and shadow
+    lX *= light.distanceAttenuation; // Create cel shading effect, based on light distance factor
+    
     half lightValue = round(lX * CEL_COUNT) / CEL_COUNT; // Quantize the light value to create a cel-shaded effect
     
     lightValue += SHADOW_LIGHT; // Add a small constant to ensure that even the darkest areas receive some light
     
     half3 diffuse = saturate(lightValue + AmbientLight(normal)); // Modulate the light value with the ambient light to ensure that shadows are not completely black and to add depth to the lighting
-    
+    diffuse *= light.distanceAttenuation; // Modulate the diffuse color by the distance attenuation to ensure that objects farther from the light source receive less light, enhancing the depth and realism of the scene
     return light.color * diffuse;
 }
 
@@ -53,18 +55,20 @@ half3 CelLighting(half3 normal, Light light)
     half lX = pow((NdotL + 1.0) * 0.5, SHADOW_OFFSET); // Adjust the light intensity based on the angle between the normal and the light direction, and apply a power function to create a sharper transition between light and shadow
     
     lX *= light.shadowAttenuation; // Modulate the light intensity by the light color and shadow factor to create a more dynamic lighting effect
+    lX *= light.distanceAttenuation; // Create cel shading effect, based on light distance factor
     
     half lightValue = round(lX * CEL_COUNT) / CEL_COUNT; // Quantize the light value to create a cel-shaded effect
     lightValue += SHADOW_LIGHT; // Add a small constant to ensure that even the darkest areas receive some light
     
     half3 diffuse = saturate(lightValue + AmbientLight(normal)); // Modulate the light value with the ambient light to ensure that shadows are not completely black and to add depth to the lighting
-    
+    diffuse *= light.distanceAttenuation; // Modulate the diffuse color by the distance attenuation to ensure that objects farther from the light source receive less light, enhancing the depth and realism of the scene
     return light.color * diffuse;
 }
 
 half3 GrassLighting(Light light)
 {
-    return light.color * (light.shadowAttenuation + SHADOW_LIGHT);
+    half3 diffuse = (light.shadowAttenuation + SHADOW_LIGHT) * light.distanceAttenuation; // Calculate the diffuse lighting for grass by combining the shadow attenuation and distance attenuation, ensuring that grass receives some light even in shadowed areas while also accounting for distance from the light source
+    return light.color * diffuse;
 }
 
 

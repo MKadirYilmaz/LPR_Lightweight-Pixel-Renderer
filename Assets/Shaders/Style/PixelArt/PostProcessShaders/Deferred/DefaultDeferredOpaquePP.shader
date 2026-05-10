@@ -113,15 +113,13 @@ Shader "Custom/DefaultDeferredOpaquePP"
                     
                     Light light;
                     light.direction = lightDir;
-                    light.color = lightColor * attenuation;
-                    light.distanceAttenuation = attenuation;
+                    light.color = lightColor;
+                    light.distanceAttenuation = (shaderID == 1) ? pow(attenuation, 2) : attenuation;
                     light.shadowAttenuation = 1.0;
                     light.layerMask = 0xFF;
                     
                     totalAdditionalLight += CalculateLightPass(shaderID, worldPos, normal, light);
-                    
                 }
-
                 return totalAdditionalLight;
             }
 

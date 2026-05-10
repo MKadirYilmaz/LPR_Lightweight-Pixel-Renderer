@@ -132,6 +132,7 @@ public class LprPackedForwardRF : ScriptableRendererFeature
                 perObjectData = PerObjectData.Lightmaps | 
                                 PerObjectData.LightProbe | 
                                 PerObjectData.LightData | 
+                                PerObjectData.LightIndices |
                                 PerObjectData.ShadowMask | 
                                 PerObjectData.ReflectionProbes,
                 
