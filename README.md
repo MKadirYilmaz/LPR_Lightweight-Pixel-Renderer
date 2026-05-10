@@ -5,6 +5,7 @@ LPR is a custom system injected into Unity 6's URP designed to render scenes wit
 ### Final Packed Deferred Game View
 <img width="1437" height="892" alt="GameView" src="https://github.com/user-attachments/assets/21b9ecf3-b7db-477b-8fea-f7381a70d506" />
 Here’s a look at the journey, the logic behind my decisions, and the technical hurdles I crossed.
+
   ## The Cel-Shading Experiment
 
 I started by tossing Unity’s standard PBR lighting aside and writing my own Cel-shading calculations.
