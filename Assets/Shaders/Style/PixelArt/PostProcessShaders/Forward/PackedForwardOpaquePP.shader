@@ -69,6 +69,11 @@ Shader "Custom/PackedForwardOpaquePP"
                 float4 color = UnpackRGBA(package, outline);
                 float depthCenter = (package == 0) ? 1.0 : color.a;
                 
+                if (pixelCoord.x == 0 || pixelCoord.x == rtWidth - 1 || pixelCoord.y == 0 || pixelCoord.y == rtHeight - 1)
+                {
+                    color.rgb = ApplyFog(color.rgb, depthCenter);
+                    return half4(color.rgb, (half)outline);
+                }
                 
                 float depthUp     = SafeUnpackDepth(_BlitTexture.Load(int3(pixelCoord + int2(0, 1), 0)));
                 float depthDown   = SafeUnpackDepth(_BlitTexture.Load(int3(pixelCoord + int2(0, -1), 0)));

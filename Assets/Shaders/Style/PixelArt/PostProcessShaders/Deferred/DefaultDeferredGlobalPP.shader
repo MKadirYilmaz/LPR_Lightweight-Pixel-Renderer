@@ -15,6 +15,7 @@ Shader "Custom/DefaultDeferredGlobalPP"
 
             #pragma vertex vert
             #pragma fragment frag
+            #pragma multi_compile _ _RENDER_NORMALS _RENDER_DEPTH
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Assets/Shaders/Style/PixelArt/DepthCalculations.hlsl"
@@ -65,6 +66,13 @@ Shader "Custom/DefaultDeferredGlobalPP"
                 float pDepthCenter = Linear01Depth(depthCenter, _ZBufferParams);
                 float uDepthCenter = lerp(pDepthCenter, 1.0 - depthCenter, unity_OrthoParams.w);
                 depthCenter = pow(uDepthCenter, DEPTH_POW);
+                
+                #if defined(_RENDER_NORMALS)
+                    return half4(normal, 1.0);
+                #endif
+                #if defined(_RENDER_DEPTH)
+                    return half4(depthCenter, depthCenter, depthCenter, 1.0);
+                #endif
                 
                 return half4(color.rgb, 1.0);
             }
